@@ -1,0 +1,11 @@
+#ddev-generated
+Host web
+    HostName web
+    IdentityFile ~/.ssh/ddev_agent_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    RequestTTY no
+    # Suppress "Permanently added" warning for agent SSH connections
+    LogLevel ERROR

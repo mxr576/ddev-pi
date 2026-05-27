@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#ddev-generated
+## Description: Run Pi in the pi sidecar
+## Usage: pi [args...]
+set -euo pipefail
+
+exec ddev exec --service=pi pi "$@"

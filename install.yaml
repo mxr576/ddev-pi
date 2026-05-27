@@ -1,6 +1,32 @@
 name: pi
+ddev_version_constraint: '>= v1.25.2'
+dependencies:
+  - trebormc/ddev-ai-ssh
 
 project_files:
+  - commands/host/pi
   - docker-compose.pi.yaml
+  - pi/.gitignore
+  - pi/Dockerfile
+  - pi/ssh-config
+  - pi/entrypoint.sh
+  - pi/global/.gitkeep
+  - pi/global/agent/extensions/web-service-commands.ts
+  - pi/project-defaults/settings.json
+  - pi/project-defaults/README.md
+global_files: []
+removal_actions:
+  - |
+    rm -rf ${DDEV_APPROOT}/.ddev/pi/global
+    echo "The .pi folder from project root and the pi-agent Docker volume is not removed automatically."
 
-ddev_version_constraint: '>= v1.24.10'
+post_install_actions:
+  - |
+    mkdir -p ${DDEV_APPROOT}/.pi
+    if [ -z "$(ls -A ${DDEV_APPROOT}/.pi)" ]; then
+      cp -r "${DDEV_APPROOT}/.ddev/pi/project-defaults/." "${DDEV_APPROOT}/.pi/"
+      echo "Project defaults copied to .pi/"
+    else
+      echo "Project defaults already exist in .pi/, skipping copy."
+    fi
+    rm -rf "${DDEV_APPROOT}/.ddev/pi/project-defaults"

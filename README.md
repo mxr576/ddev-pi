@@ -1,48 +1,41 @@
-[![add-on registry](https://img.shields.io/badge/DDEV-Add--on_Registry-blue)](https://addons.ddev.com)
-[![tests](https://github.com/mxr576/ddev-pi/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/mxr576/ddev-pi/actions/workflows/tests.yml?query=branch%3Amain)
-[![last commit](https://img.shields.io/github/last-commit/mxr576/ddev-pi)](https://github.com/mxr576/ddev-pi/commits)
-[![release](https://img.shields.io/github/v/release/mxr576/ddev-pi)](https://github.com/mxr576/ddev-pi/releases/latest)
+# DDEV Add-on for Pi Coding Agent
 
-# DDEV Pi
+This DDEV add-on provides a fully containerized, isolated environment for the [Pi Coding Agent](https://pi.dev).
 
-## Overview
-
-This add-on integrates Pi into your [DDEV](https://ddev.com/) project.
+## Architecture & Security
+- **Full Isolation:** The agent runs in a dedicated sidecar container. We explicitly do *not* mount your host machine's `~/.pi` directory, ensuring that agent state is scoped strictly to the project and avoids cross-contamination with your host environment.
+- **Project Access:** The project root is mounted at `/workspace` with read/write permissions, allowing Pi to interact with your codebase.
+- **Network:** The agent is isolated within the DDEV project network.
+- **Sensitive Data:** No host-level sensitive directories (e.g., `~/.ssh`) are mounted.
 
 ## Installation
-
 ```bash
-ddev add-on get mxr576/ddev-pi
+ddev addon get mxr576/ddev-pi
 ddev restart
 ```
-
-After installation, make sure to commit the `.ddev` directory to version control.
 
 ## Usage
+The Pi agent runs as a DDEV service. To interact with it:
 
-| Command | Description |
-| ------- | ----------- |
-| `ddev describe` | View service status and used ports for Pi |
-| `ddev logs -s pi` | Check Pi logs |
+1. Enable the profile: `ddev start --profiles=pi`
+2. Run commands: `ddev pi [command]`
 
-## Advanced Customization
-
-To change the Docker image:
-
+Example:
 ```bash
-ddev dotenv set .ddev/.env.pi --pi-docker-image="ddev/ddev-utilities:latest"
-ddev add-on get mxr576/ddev-pi
-ddev restart
+ddev pi status
 ```
 
-Make sure to commit the `.ddev/.env.pi` file to version control.
+## Managing Extensions
+Pi supports two types of extensions:
 
-All customization options (use with caution):
+- **Global Extensions:** Use `ddev pi install <addon-ref>`. These are stored in `.ddev/pi/global/` and remain local to your environment. Do not commit these to VCS.
+- **Project Extensions:** Use `ddev pi install -l <addon-ref>`. These are stored in the project's `.pi/` directory. **Commit this directory to your version control system** so that extensions are shared across your team.
 
-| Variable | Flag | Default |
-| -------- | ---- | ------- |
-| `PI_DOCKER_IMAGE` | `--pi-docker-image` | `ddev/ddev-utilities:latest` |
+To remove extensions, use the `ddev pi remove` or `ddev pi remove -l` commands respectively.
+
+## Configuration
+Default configurations are initialized in your project's `.pi/` directory. You may modify `settings.json` there to configure providers and agent preferences.
 
 ## Credits
 
-**Contributed and maintained by [@mxr576](https://github.com/mxr576)**
+Contributed and maintained by [@mxr576](https://github.com/mxr576). The initial proof of concept and early development were sponsored by [Pronovix](https://pronovix.com).

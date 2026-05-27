@@ -2,14 +2,63 @@
 services:
   pi:
     container_name: ddev-${DDEV_SITENAME}-pi
-    image: ${PI_DOCKER_IMAGE:-ddev/ddev-utilities:latest}
-    command: tail -f /dev/null
-    restart: "no"
-    # These labels ensure this service is discoverable by DDEV.
-    labels:
-      com.ddev.site-name: ${DDEV_SITENAME}
-      com.ddev.approot: ${DDEV_APPROOT}
-
+    build:
+      context: ${DDEV_APPROOT}/.ddev/pi
+      dockerfile: Dockerfile
+      args:
+        PI_VERSION: ${PI_VERSION:-latest}
+        USERNAME: pi
+        USER_UID: ${DDEV_UID:-1000}
+        USER_GID: ${DDEV_GID:-1000}
+    profiles:
+      - pi
+    user: "${DDEV_UID:-1000}:${DDEV_GID:-1000}"
+    working_dir: /var/www/html
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: ["CMD-SHELL", "pi --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - default
+      - ddev_default
+    depends_on:
+      web:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HOME: /home/pi
+      NPM_CONFIG_PREFIX: /home/pi/.npm-global
+      NPM_CONFIG_CACHE: /mnt/ddev-global-cache/npm
+      # Use explicit network-suppression defaults.
+      # PI_OFFLINE should already suppress network-dependent checks, but we
+      # also set the granular flags so the intent stays obvious and resilient
+      # if Pi changes how offline mode is interpreted in the future.
+      PI_OFFLINE: ${PI_OFFLINE:-1}
+      PI_SKIP_VERSION_CHECK: ${PI_SKIP_VERSION_CHECK:-1}
+      PI_TELEMETRY: ${PI_TELEMETRY:-0}
+      PI_VERSION: ${PI_VERSION:-latest}
+      TZ: ${TZ:-UTC}
     volumes:
-      - ".:/mnt/ddev_config"
-      - "ddev-global-cache:/mnt/ddev-global-cache"
+      - pi-agent:/home/pi/.pi
+      - ${DDEV_APPROOT}:/var/www/html
+      - ${DDEV_APPROOT}/.ddev/pi/global/agent:/home/pi/.pi/agent
+      - ddev-global-cache:/mnt/ddev-global-cache
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: "no"
+
+volumes:
+  pi-agent:
+
+networks:
+  ddev_default:
+    external: true

@@ -1,0 +1,13 @@
+{
+  "defaultThinkingLevel": "medium",
+  "enabledModels": [
+    "*"
+  ],
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "httpIdleTimeoutMs": 30000,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "theme": "dark"
+}

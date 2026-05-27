@@ -1,0 +1,32 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.on("tool_call", async (event, ctx) => {
+    if (isToolCallEventType("bash", event)) {
+      const originalCmd = event.input.command;
+
+      // Define tools that must run in the web container
+      const tools = [
+        { name: "drush", pattern: /^(?:\.\/vendor\/bin\/)?drush/ },
+        { name: "composer", pattern: /^composer/ },
+        { name: "phpunit", pattern: /^(?:\.\/vendor\/bin\/)?phpunit/ },
+        { name: "phpstan", pattern: /^(?:\.\/vendor\/bin\/)?phpstan/ },
+        { name: "phpcs", pattern: /^(?:\.\/vendor\/bin\/)?phpcs/ },
+        { name: "phpstan", pattern: /^(?:\.\/vendor\/bin\/)?phpcbf/ },
+      ];
+
+      for (const tool of tools) {
+        if (tool.pattern.test(originalCmd) && !originalCmd.startsWith("ssh web")) {
+          // Wrap in ssh web, using -s to read command from stdin via printf to avoid shell interpretation.
+          const escaped = originalCmd.replace(/'/g, "'\\''");
+          event.input.command = `printf '%s' '${escaped}' | ssh web bash -s`;
+
+          // Optionally notify the user
+          ctx.ui.notify(`Enforced web container execution for: ${tool.name}`, "info");
+          break;
+        }
+      }
+    }
+  });
+}
