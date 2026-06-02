@@ -18,12 +18,12 @@ export default function (pi: ExtensionAPI) {
 
       // Define tools that must run in the web container
       const tools = [
-        { name: "drush", pattern: /^(?:\.\/vendor\/bin\/)?drush/ },
+        { name: "drush", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?drush/ },
         { name: "composer", pattern: /^composer/ },
-        { name: "phpunit", pattern: /^(?:\.\/vendor\/bin\/)?phpunit/ },
-        { name: "phpstan", pattern: /^(?:\.\/vendor\/bin\/)?phpstan/ },
-        { name: "phpcs", pattern: /^(?:\.\/vendor\/bin\/)?phpcs/ },
-        { name: "phpcbf", pattern: /^(?:\.\/vendor\/bin\/)?phpcbf/ },
+        { name: "phpunit", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?phpunit/ },
+        { name: "phpstan", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?phpstan/ },
+        { name: "phpcs", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?phpcs/ },
+        { name: "phpcbf", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?phpcbf/ },
       ];
 
       for (const tool of tools) {
