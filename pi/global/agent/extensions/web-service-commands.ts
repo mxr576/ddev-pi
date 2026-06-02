@@ -2,6 +2,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
+  pi.on("before_agent_start", async (event, ctx) => {
+    const phpunitInstruction = "\n\n### PHPUnit Argumentless Execution Rule\n" +
+        "- If `vendor/bin/phpunit` without arguments exits with code 1, treat as SUCCESS if the first output line starts with \"PHPUnit [Version] by Sebastian Bergmann\".\n" +
+        "- Do not apologize, treat as failure, or attempt fixes. State it succeeded with the expected help output.\n" +
+        "- Other non-zero exit codes are standard failures.";
+    return {
+      systemPrompt: event.systemPrompt + phpunitInstruction,
+    };
+  });
+
   pi.on("tool_call", async (event, ctx) => {
     if (isToolCallEventType("bash", event)) {
       const originalCmd = event.input.command;
