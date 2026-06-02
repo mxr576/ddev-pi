@@ -13,7 +13,7 @@ export default function (pi: ExtensionAPI) {
         { name: "phpunit", pattern: /^(?:\.\/vendor\/bin\/)?phpunit/ },
         { name: "phpstan", pattern: /^(?:\.\/vendor\/bin\/)?phpstan/ },
         { name: "phpcs", pattern: /^(?:\.\/vendor\/bin\/)?phpcs/ },
-        { name: "phpstan", pattern: /^(?:\.\/vendor\/bin\/)?phpcbf/ },
+        { name: "phpcbf", pattern: /^(?:\.\/vendor\/bin\/)?phpcbf/ },
       ];
 
       for (const tool of tools) {
