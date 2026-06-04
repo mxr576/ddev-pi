@@ -50,6 +50,14 @@ if [ -d "${ENTRYPOINT_D}" ]; then
   done < <(find "${ENTRYPOINT_D}" -maxdepth 1 -type f -name '*.sh' | sort)
 fi
 
+# Install Scrapling skill.
+if [ -d /var/www/html/.pi/skills/scrapling-official ]; then
+  echo "Scrapling skill already exists, skipping install.";
+else
+  # Disable telemetry by faking CI environment.
+  CI=1 npx skills add "https://github.com/D4Vinci/Scrapling/tree/${SCRAPLING_SKILL_REF:-main}/agent-skill/Scrapling-Skill" --agent pi -y;
+fi
+
 # Trap signals for graceful shutdown
 trap 'echo "Shutting down Pi Workspace..."; exit 0' TERM INT
 
