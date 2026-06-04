@@ -6,27 +6,24 @@ ARG USERNAME=pi
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG PI_VERSION=latest
+ARG SCRAPLING_SKILL_REF=main
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV USERNAME=${USERNAME}
 ENV USER_HOME=/home/${USERNAME}
+# Part of the workaround for https://github.com/georgebashi/pi-web-fetch/pull/5.
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 USER root
 
-# Install base dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ripgrep \
-       fd-find \
-       ca-certificates \
        curl \
-       openssh-client \
+       ca-certificates \
        sudo \
        python3-pip \
        python3-venv \
        python-is-python3 \
-       git \
-       jq \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,10 +36,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 RUN existing_user=$(getent passwd ${USER_UID} | cut -d: -f1) \
     && existing_group=$(getent group ${USER_GID} | cut -d: -f1) \
     && if [ -n "$existing_user" ] && [ "$existing_user" != "${USERNAME}" ]; then \
-         userdel -r $existing_user 2>/dev/null || true; \
+         userdel -r "$existing_user" 2>/dev/null || true; \
        fi \
     && if [ -n "$existing_group" ] && [ "$existing_group" != "${USERNAME}" ]; then \
-         groupdel $existing_group 2>/dev/null || true; \
+         groupdel "$existing_group" 2>/dev/null || true; \
        fi \
     && groupadd --gid ${USER_GID} ${USERNAME} 2>/dev/null || true \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME} 2>/dev/null || true \
@@ -64,6 +61,37 @@ RUN mkdir -p ${USER_HOME}/.npm-global \
     && mkdir -p ${USER_HOME}/.pi/agent/bin \
     && chown -R ${USER_UID}:${USER_GID} ${USER_HOME}/.npm-global \
     && chown -R ${USER_UID}:${USER_GID} ${USER_HOME}/.pi
+
+# Install base dependencies.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       ripgrep \
+       fd-find \
+       git \
+       openssh-client \
+       jq \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Scrapling and UV globally (uv is required by pi-web-fetch extension).
+# `scrapling install --force` must run as root so it can install
+# system dependencies via apt. This causes Playwright to place
+# Chromium in /root/.cache/ms-playwright. Since the app runs as
+# ${USERNAME}, that location is not accessible, so we move the cache
+# into /home/${USERNAME}/.cache for runtime use.
+RUN python3 -m pip install --break-system-packages "scrapling[all]" uv \
+    && scrapling install --force \
+    && mkdir -p ${USER_HOME}/.cache \
+    && mv /root/.cache/ms-playwright ${USER_HOME}/.cache \
+    && chown -R ${USER_UID}:${USER_GID} ${USER_HOME}/.cache
+
+RUN printf '%s\n' \
+       '#!/bin/sh' \
+       'exec $(find ${USER_HOME}/.cache/ms-playwright -name 'chrome' -path '*/chrome-linux*/*' | head -1) --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --no-zygote "$@"' \
+       > /usr/bin/google-chrome-stable \
+    && chmod +x /usr/bin/google-chrome-stable
 
 # Copy and register entrypoint (as root, before USER switch)
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
@@ -99,7 +127,7 @@ WORKDIR ${USER_HOME}
 
 ENV HOME=${USER_HOME}
 ENV NPM_CONFIG_PREFIX=${USER_HOME}/.npm-global
-ENV PATH=${USER_HOME}/.npm-global/bin:$PATH
+ENV PATH=${USER_HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:$PATH
 
 RUN npm_config_update_notifier=false npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 
