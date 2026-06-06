@@ -18,6 +18,7 @@ export default function (pi: ExtensionAPI) {
 
       // Define tools that must run in the web container
       const tools = [
+        { name: "php", pattern: /^php\b/ },
         { name: "drush", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?drush/ },
         { name: "composer", pattern: /^composer/ },
         { name: "phpunit", pattern: /^(?:\.\/)?(?:vendor\/bin\/)?phpunit/ },

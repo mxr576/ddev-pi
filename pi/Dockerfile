@@ -84,6 +84,7 @@ RUN echo 'export PATH="${HOME}/.npm-global/bin:${HOME}/go/bin:$PATH"' >> ~/.bash
     && echo '' >> ~/.bashrc \
     && echo '# Helper functions to execute in web container via SSH' >> ~/.bashrc \
     && echo 'web-exec() { ssh-cmd web "$@"; }' >> ~/.bashrc \
+    && echo 'php() { ssh-cmd web php "$@"; }' >> ~/.bashrc \
     && echo 'drush() { ssh-cmd web ./vendor/bin/drush "$@"; }' >> ~/.bashrc \
     && echo 'composer() { ssh-cmd web composer "$@"; }' >> ~/.bashrc \
     && echo 'phpunit() { ssh-cmd web ./vendor/bin/phpunit "$@"; }' >> ~/.bashrc \
@@ -93,7 +94,7 @@ RUN echo 'export PATH="${HOME}/.npm-global/bin:${HOME}/go/bin:$PATH"' >> ~/.bash
     && echo 'echo "Pi container ready"' >> ~/.bashrc \
     && echo 'echo "   Site URL: $DDEV_PRIMARY_URL"' >> ~/.bashrc \
     && echo '' >> ~/.bashrc \
-    && echo 'echo "Commands: drush | composer | phpunit | phpstan | web-shell"' >> ~/.bashrc \
+    && echo 'echo "Commands: php | drush | composer | phpunit | phpstan | web-shell"' >> ~/.bashrc \
     && echo '' >> ~/.bashrc
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
