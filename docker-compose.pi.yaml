@@ -43,6 +43,7 @@ services:
       PI_TELEMETRY: ${PI_TELEMETRY:-0}
       PI_VERSION: ${PI_VERSION:-latest}
       TZ: ${TZ:-UTC}
+      IS_DDEV_PROJECT: ${IS_DDEV_PROJECT}
     volumes:
       - pi-agent:/home/pi/.pi
       - ${DDEV_APPROOT}:/var/www/html
