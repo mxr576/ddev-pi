@@ -64,6 +64,31 @@ RUN mkdir -p ${USER_HOME}/.npm-global \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# ---------------------------------------------------------------------------
+# build.d/ extensibility seam
+#
+# Scripts placed in .ddev/pi/build.d/ are copied here and executed as root
+# in lexicographic (sorted) order before the image switches to the non-root
+# "pi" user. This allows addons and users to install packages or perform
+# other root-level setup without modifying this Dockerfile directly.
+#
+# Numeric naming bands:
+#   00-09  Reserved for DDEV PI core
+#   10-49  Runtimes and infrastructure packages
+#   50-89  Tools and utilities
+#   90-99  Project or user overrides
+#
+# To run something as the "pi" user from within a build script, use:
+#   sudo -u ${USERNAME} <command>
+# ---------------------------------------------------------------------------
+COPY build.d/ /tmp/build.d/
+RUN find /tmp/build.d -maxdepth 1 -name '*.sh' | sort | while read -r script; do \
+        echo "[build.d] Running $script"; \
+        chmod +x "$script"; \
+        "$script"; \
+    done \
+    && rm -rf /tmp/build.d
+
 USER ${USERNAME}
 WORKDIR ${USER_HOME}
 
@@ -79,7 +104,7 @@ RUN npm_config_update_notifier=false npm install -g --ignore-scripts @earendil-w
 RUN echo 'export PATH="${HOME}/.npm-global/bin:${HOME}/go/bin:$PATH"' >> ~/.bashrc \
     && echo 'alias ll="ls -la"' >> ~/.bashrc \
     && echo '' >> ~/.bashrc \
-    && echo '# Safe SSH command wrapper — preserves quoting across SSH' >> ~/.bashrc \
+    && echo '# Safe SSH command wrapper - preserves quoting across SSH' >> ~/.bashrc \
     && echo 'ssh-cmd() { local host="$1"; shift; local cmd=""; for arg in "$@"; do cmd="${cmd:+$cmd }$(printf "%q" "$arg")"; done; ssh "$host" "$cmd"; }' >> ~/.bashrc \
     && echo '' >> ~/.bashrc \
     && echo '# Helper functions to execute in web container via SSH' >> ~/.bashrc \
@@ -94,7 +119,7 @@ RUN echo 'export PATH="${HOME}/.npm-global/bin:${HOME}/go/bin:$PATH"' >> ~/.bash
     && echo 'echo "Pi container ready"' >> ~/.bashrc \
     && echo 'echo "   Site URL: $DDEV_PRIMARY_URL"' >> ~/.bashrc \
     && echo '' >> ~/.bashrc \
-    && echo 'echo "Commands: php | drush | composer | phpunit | phpstan | web-shell"' >> ~/.bashrc \
+    && echo 'Commands: php | drush | composer | phpunit | phpstan | web-shell' >> ~/.bashrc \
     && echo '' >> ~/.bashrc
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
