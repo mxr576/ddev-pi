@@ -49,6 +49,10 @@ services:
       - ${DDEV_APPROOT}:/var/www/html
       - ${DDEV_APPROOT}/.ddev/pi/global/agent:/home/pi/.pi/agent
       - ddev-global-cache:/mnt/ddev-global-cache
+      # bashrc.d/ extensibility seam: scripts placed here are sourced by
+      # ~/.bashrc in sorted order on every interactive shell login.
+      # Changes become active after "ddev restart" without rebuilding the image.
+      - ${DDEV_APPROOT}/.ddev/pi/bashrc.d:/home/pi/.bashrc.d:ro
     tmpfs:
       - /tmp
     security_opt:
