@@ -98,28 +98,34 @@ ENV PATH=${USER_HOME}/.npm-global/bin:$PATH
 
 RUN npm_config_update_notifier=false npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 
-# Pi's built-in Bash tool does not load these ~/.bashrc aliases and functions,
-# so they are mainly for interactive use inside the PI container. They are still
-# useful for manual SSH-based connectivity checks against the web container.
+# ---------------------------------------------------------------------------
+# bashrc.d/ extensibility seam
+#
+# Scripts placed in .ddev/pi/bashrc.d/ are mounted into the container at
+# /home/pi/.bashrc.d (see docker-compose.pi.yaml) and sourced by ~/.bashrc
+# in sorted order when a user opens an interactive shell.
+#
+# This seam is interactive-shell-only. It does NOT affect PI's autonomous
+# tool execution, which routes through agent extensions.
+#
+# Numeric naming bands:
+#   00-09  Reserved for DDEV PI core
+#   10-49  Environment and PATH setup
+#   50-89  Tools and utilities
+#   90-99  Project or user overrides
+# ---------------------------------------------------------------------------
 RUN echo 'export PATH="${HOME}/.npm-global/bin:${HOME}/go/bin:$PATH"' >> ~/.bashrc \
     && echo 'alias ll="ls -la"' >> ~/.bashrc \
     && echo '' >> ~/.bashrc \
-    && echo '# Safe SSH command wrapper - preserves quoting across SSH' >> ~/.bashrc \
-    && echo 'ssh-cmd() { local host="$1"; shift; local cmd=""; for arg in "$@"; do cmd="${cmd:+$cmd }$(printf "%q" "$arg")"; done; ssh "$host" "$cmd"; }' >> ~/.bashrc \
-    && echo '' >> ~/.bashrc \
-    && echo '# Helper functions to execute in web container via SSH' >> ~/.bashrc \
-    && echo 'web-exec() { ssh-cmd web "$@"; }' >> ~/.bashrc \
-    && echo 'php() { ssh-cmd web php "$@"; }' >> ~/.bashrc \
-    && echo 'drush() { ssh-cmd web ./vendor/bin/drush "$@"; }' >> ~/.bashrc \
-    && echo 'composer() { ssh-cmd web composer "$@"; }' >> ~/.bashrc \
-    && echo 'phpunit() { ssh-cmd web ./vendor/bin/phpunit "$@"; }' >> ~/.bashrc \
-    && echo 'phpstan() { ssh-cmd web ./vendor/bin/phpstan "$@"; }' >> ~/.bashrc \
-    && echo 'web-shell() { ssh -t web bash; }' >> ~/.bashrc \
-    && echo '' >> ~/.bashrc \
-    && echo 'echo "Pi container ready"' >> ~/.bashrc \
-    && echo 'echo "   Site URL: $DDEV_PRIMARY_URL"' >> ~/.bashrc \
-    && echo '' >> ~/.bashrc \
-    && echo 'Commands: php | drush | composer | phpunit | phpstan | web-shell' >> ~/.bashrc \
+    && echo '# Source all scripts from the mounted bashrc.d/ directory in sorted order.' >> ~/.bashrc \
+    && echo '# An empty or missing directory is handled gracefully.' >> ~/.bashrc \
+    && echo 'if [ -d "${HOME}/.bashrc.d" ]; then' >> ~/.bashrc \
+    && echo '  for __bashrc_d_file in $(ls -1 "${HOME}/.bashrc.d"/*.sh 2>/dev/null | sort); do' >> ~/.bashrc \
+    && echo '    # shellcheck source=/dev/null' >> ~/.bashrc \
+    && echo '    [ -f "$__bashrc_d_file" ] && . "$__bashrc_d_file"' >> ~/.bashrc \
+    && echo '  done' >> ~/.bashrc \
+    && echo '  unset __bashrc_d_file' >> ~/.bashrc \
+    && echo 'fi' >> ~/.bashrc \
     && echo '' >> ~/.bashrc
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
