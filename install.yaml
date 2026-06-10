@@ -10,6 +10,7 @@ project_files:
   - pi/Dockerfile
   - pi/ssh-config
   - pi/entrypoint.sh
+  - pi/build.d/.gitkeep
   - pi/global/.gitkeep
   - pi/global/agent/extensions/web-service-commands.ts
   - pi/project-defaults/settings.json
