@@ -205,8 +205,9 @@ EOF
   cp "${DIR}/tests/testdata/build.d/50-test-package.sh" "${BUILD_D_DIR}/50-test-package.sh"
   chmod +x "${BUILD_D_DIR}/50-test-package.sh"
 
-  # Restart forces a rebuild of the PI image with the new build script.
-  run ddev restart -y
+  # Restart rebuilds the PI image, then start --profiles=pi brings the
+  # PI container up (it is an optional profile).
+  run ddev restart && ddev start --profiles=pi
   assert_success
 
   # The fixture script installs 'jq', which must now be present inside the
@@ -232,7 +233,9 @@ EOF
   assert_success
   assert_output "0"
 
-  run ddev restart -y
+  # Restart rebuilds the PI image, then start --profiles=pi brings the
+  # PI container up (it is an optional profile).
+  run ddev restart && ddev start --profiles=pi
   assert_success
 
   # The PI container must be reachable, proving the build succeeded.
