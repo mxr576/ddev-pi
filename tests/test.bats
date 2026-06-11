@@ -190,3 +190,52 @@ EOF
   run ddev exec --service pi test -f /tmp/hook-ran.marker
   assert_success
 }
+
+@test "build.d: contributed script installs package into PI container" {
+  set -eu -o pipefail
+  echo "# Testing build.d/ seam with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Copy the fixture build script into .ddev/pi/build.d/ so it is picked
+  # up when the PI image is (re)built.
+  BUILD_D_DIR="${TESTDIR}/.ddev/pi/build.d"
+  mkdir -p "${BUILD_D_DIR}"
+  cp "${DIR}/tests/testdata/build.d/50-test-package.sh" "${BUILD_D_DIR}/50-test-package.sh"
+  chmod +x "${BUILD_D_DIR}/50-test-package.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # The fixture script installs 'jq', which must now be present inside the
+  # running PI container.
+  run ddev exec --service pi which jq
+  assert_success
+
+  run ddev exec --service pi jq --version
+  assert_success
+}
+
+@test "build.d: empty directory (gitkeep only) builds and starts cleanly" {
+  set -eu -o pipefail
+  echo "# Testing empty build.d/ seam with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Confirm that .ddev/pi/build.d/ contains only .gitkeep (the default
+  # state shipped by the add-on) — no extra scripts.
+  BUILD_D_DIR="${TESTDIR}/.ddev/pi/build.d"
+  run bash -c "ls '${BUILD_D_DIR}' | grep -v '^\.' | wc -l | tr -d ' '"
+  assert_success
+  assert_output "0"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # The PI container must be reachable, proving the build succeeded.
+  run ddev exec --service pi echo "container is up"
+  assert_success
+  assert_output --partial "container is up"
+}
