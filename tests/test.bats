@@ -239,3 +239,71 @@ EOF
   assert_success
   assert_output --partial "container is up"
 }
+
+@test "bashrc.d: contributed script defines alias available in interactive shell" {
+  set -eu -o pipefail
+  echo "# Testing bashrc.d/ seam with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Copy the fixture bashrc.d script into .ddev/pi/bashrc.d/ so it is
+  # mounted into the container at /home/pi/.bashrc.d and sourced by ~/.bashrc.
+  BASHRC_D_DIR="${TESTDIR}/.ddev/pi/bashrc.d"
+  mkdir -p "${BASHRC_D_DIR}"
+  cp "${DIR}/tests/testdata/bashrc.d/50-test-alias.sh" "${BASHRC_D_DIR}/50-test-alias.sh"
+  chmod +x "${BASHRC_D_DIR}/50-test-alias.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # Open an interactive login shell so ~/.bashrc is sourced, then check
+  # that the alias defined in the fixture is available.
+  run ddev exec --service pi bash -i -c 'type pi-test-alias'
+  assert_success
+  assert_output --partial "pi-test-alias"
+}
+
+@test "entrypoint.d: fixture sentinel script writes marker file on startup" {
+  set -eu -o pipefail
+  echo "# Testing entrypoint.d/ sentinel fixture with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Copy the fixture sentinel script into .ddev/pi/entrypoint.d/ so it is
+  # mounted and executed by entrypoint.sh on container startup.
+  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${ENTRYPOINT_D_DIR}"
+  cp "${DIR}/tests/testdata/entrypoint.d/50-sentinel.sh" "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
+  chmod +x "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # The sentinel file must exist, proving the hook ran during startup.
+  run ddev exec --service pi test -f /tmp/entrypoint-sentinel.marker
+  assert_success
+}
+
+@test "entrypoint.d: failing fixture script does not crash the container" {
+  set -eu -o pipefail
+  echo "# Testing entrypoint.d/ warning-not-crash behavior with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Copy the fixture failing script into .ddev/pi/entrypoint.d/.
+  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${ENTRYPOINT_D_DIR}"
+  cp "${DIR}/tests/testdata/entrypoint.d/60-failing.sh" "${ENTRYPOINT_D_DIR}/60-failing.sh"
+  chmod +x "${ENTRYPOINT_D_DIR}/60-failing.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # The container must still be reachable and healthy despite the failing hook.
+  run ddev exec --service pi echo "still-healthy"
+  assert_success
+  assert_output --partial "still-healthy"
+}
