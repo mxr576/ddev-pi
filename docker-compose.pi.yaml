@@ -53,6 +53,11 @@ services:
       # ~/.bashrc in sorted order on every interactive shell login.
       # Changes become active after "ddev restart" without rebuilding the image.
       - ${DDEV_APPROOT}/.ddev/pi/bashrc.d:/home/pi/.bashrc.d:ro
+      # entrypoint.d/ extensibility seam: scripts placed here are discovered
+      # and executed by entrypoint.sh in lexicographic order on every container
+      # startup. Naming convention: 00-09 core, 10-49 infrastructure,
+      # 50-89 tools, 90-99 overrides.
+      - ${DDEV_APPROOT}/.ddev/pi/entrypoint.d:/home/pi/.entrypoint.d:ro
     tmpfs:
       - /tmp
     security_opt:

@@ -84,3 +84,109 @@ teardown() {
   assert_success
   health_checks
 }
+
+@test "entrypoint.d: empty directory does not cause errors" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+  run ddev exec --service pi echo "container is up"
+  assert_success
+  assert_output --partial "container is up"
+}
+
+@test "entrypoint.d: hooks run in lexicographic order" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
+
+  cat > "${HOOK_DIR}/10-first.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "10-first" >> /tmp/hook-order.log
+EOF
+  chmod +x "${HOOK_DIR}/10-first.sh"
+
+  cat > "${HOOK_DIR}/50-second.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "50-second" >> /tmp/hook-order.log
+EOF
+  chmod +x "${HOOK_DIR}/50-second.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  run ddev exec --service pi cat /tmp/hook-order.log
+  assert_success
+  assert_output --partial "10-first"
+  assert_output --partial "50-second"
+
+  # Verify 10-first appears before 50-second in the file.
+  run ddev exec --service pi bash -c 'grep -n "10-first" /tmp/hook-order.log | cut -d: -f1'
+  assert_success
+  FIRST_LINE="${output}"
+
+  run ddev exec --service pi bash -c 'grep -n "50-second" /tmp/hook-order.log | cut -d: -f1'
+  assert_success
+  SECOND_LINE="${output}"
+
+  [ "${FIRST_LINE}" -lt "${SECOND_LINE}" ]
+}
+
+@test "entrypoint.d: failing hook emits warning but container keeps running" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
+
+  cat > "${HOOK_DIR}/10-failing.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${HOOK_DIR}/10-failing.sh"
+
+  cat > "${HOOK_DIR}/20-after-failure.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "still-running" >> /tmp/post-failure.log
+EOF
+  chmod +x "${HOOK_DIR}/20-after-failure.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # Container must still be reachable.
+  run ddev exec --service pi echo "alive"
+  assert_success
+  assert_output --partial "alive"
+
+  # The hook that follows the failing one must still have run.
+  run ddev exec --service pi cat /tmp/post-failure.log
+  assert_success
+  assert_output --partial "still-running"
+}
+
+@test "entrypoint.d: successful hook produces observable side effects" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
+
+  cat > "${HOOK_DIR}/50-side-effect.sh" <<'EOF'
+#!/usr/bin/env bash
+touch /tmp/hook-ran.marker
+EOF
+  chmod +x "${HOOK_DIR}/50-side-effect.sh"
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  run ddev exec --service pi test -f /tmp/hook-ran.marker
+  assert_success
+}

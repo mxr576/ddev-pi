@@ -30,6 +30,26 @@ if ! sed -n '/^Host web$/,/^Host /p' "${HOME}/.ssh/config" 2>/dev/null | grep -q
   sed -i "/^Host web$/a\\    User $WEB_USER" "${HOME}/.ssh/config" 2>/dev/null
 fi
 
+# ---------------------------------------------------------------------------
+# entrypoint.d/ hooks
+# Scripts placed in ${HOME}/.entrypoint.d are executed in lexicographic order.
+# Naming convention mirrors build.d/: 00-09 core, 10-49 infrastructure,
+# 50-89 tools, 90-99 overrides.
+# A failing hook emits a warning and does NOT crash the container.
+# ---------------------------------------------------------------------------
+ENTRYPOINT_D="${HOME}/.entrypoint.d"
+if [ -d "${ENTRYPOINT_D}" ]; then
+  # Use find + sort to guarantee lexicographic order across all shells.
+  while IFS= read -r hook; do
+    [ -f "${hook}" ] || continue
+    [ -x "${hook}" ] || continue
+    echo "[entrypoint.d] Running $(basename "${hook}")"
+    if ! "${hook}"; then
+      echo "[entrypoint.d] WARNING: $(basename "${hook}") exited with a non-zero status. Continuing." >&2
+    fi
+  done < <(find "${ENTRYPOINT_D}" -maxdepth 1 -type f -name '*.sh' | sort)
+fi
+
 # Trap signals for graceful shutdown
 trap 'echo "Shutting down Pi Workspace..."; exit 0' TERM INT
 

@@ -11,6 +11,7 @@ project_files:
   - pi/ssh-config
   - pi/entrypoint.sh
   - pi/build.d/.gitkeep
+  - pi/entrypoint.d/.gitkeep
   - pi/bashrc.d/50-drupal-aliases.sh
   - pi/global/.gitkeep
   - pi/global/agent/extensions/web-service-commands.ts
