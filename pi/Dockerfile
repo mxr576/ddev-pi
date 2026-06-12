@@ -22,6 +22,8 @@ RUN apt-get update \
        curl \
        openssh-client \
        sudo \
+       python3-pip \
+       python3-venv \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
