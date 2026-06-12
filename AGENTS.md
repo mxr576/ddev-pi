@@ -2,6 +2,9 @@
 
 When working on this project, please adhere to the following guidelines:
 
+## Read the README First
+- **Always read `README.md` before starting work.** It contains essential information regarding the architecture of this DDEV add-on, the containerized environment, and the four extensibility seams (`build.d/`, `bashrc.d/`, `entrypoint.d/`, and `global/agent/extensions/`). Understanding these is critical for any modifications or feature additions.
+
 ## Ignoring `.ddev`
 - Do not modify or perform extensive searches within the `.ddev` directory. This directory contains the installed version of this addon, which is used for testing changes. Focus your work on the source code outside of this directory.
 
