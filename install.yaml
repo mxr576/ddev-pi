@@ -13,7 +13,6 @@ project_files:
   - pi/build.d/.gitkeep
   - pi/entrypoint.d/.gitkeep
   - pi/bashrc.d/50-drupal-aliases.sh
-  - pi/global/.gitkeep
   - pi/global/agent/extensions/web-service-commands.ts
   - pi/project-defaults/settings.json
   - pi/project-defaults/README.md
@@ -25,11 +24,28 @@ removal_actions:
 
 post_install_actions:
   - |
-    mkdir -p ${DDEV_APPROOT}/.pi
-    if [ -z "$(ls -A ${DDEV_APPROOT}/.pi)" ]; then
+    if [ ! -f "${DDEV_APPROOT}/.pi/settings.json" ]; then
       cp -r "${DDEV_APPROOT}/.ddev/pi/project-defaults/." "${DDEV_APPROOT}/.pi/"
       echo "Project defaults copied to .pi/"
     else
       echo "Project defaults already exist in .pi/, skipping copy."
     fi
     rm -rf "${DDEV_APPROOT}/.ddev/pi/project-defaults"
+
+    # Remove the #ddev-generated line from the project-specific settings.json after copying
+    if [ -f "${DDEV_APPROOT}/.pi/settings.json" ]; then
+      grep -v "ddev-generated" "${DDEV_APPROOT}/.pi/settings.json" > "${DDEV_APPROOT}/.pi/settings.json.tmp" && mv "${DDEV_APPROOT}/.pi/settings.json.tmp" "${DDEV_APPROOT}/.pi/settings.json"
+    fi
+
+    # Initialize trust.json if it doesn't exist, we always trust the code
+    # inside the ${DDEV_APPROOT}, otherwise we would not install the coding
+    # agent on the project.
+    mkdir -p "${DDEV_APPROOT}/.ddev/pi/global/agent"
+    if [ ! -f "${DDEV_APPROOT}/.ddev/pi/global/agent/trust.json" ]; then
+      cat <<'EOF' > "${DDEV_APPROOT}/.ddev/pi/global/agent/trust.json"
+    {
+      "/var/www/html": true
+    }
+    EOF
+      echo "Initialized trust.json"
+    fi

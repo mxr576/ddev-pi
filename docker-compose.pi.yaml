@@ -2,6 +2,7 @@
 services:
   pi:
     container_name: ddev-${DDEV_SITENAME}-pi
+    image: ddev-pi-${DDEV_SITENAME}-built
     build:
       context: ${DDEV_APPROOT}/.ddev/pi
       dockerfile: Dockerfile
