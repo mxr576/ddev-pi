@@ -26,6 +26,7 @@ RUN apt-get update \
        python3-venv \
        python-is-python3 \
        git \
+       jq \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
