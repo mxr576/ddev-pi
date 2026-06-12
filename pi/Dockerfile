@@ -25,6 +25,7 @@ RUN apt-get update \
        python3-pip \
        python3-venv \
        python-is-python3 \
+       git \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
