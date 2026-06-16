@@ -17,6 +17,9 @@ This DDEV add-on provides a fully containerized, isolated environment for the [P
 
 For a detailed diagram and breakdown of the system's components and security boundaries, please see the [Architecture document](docs/architecture.md).
 
+> [!WARNING]
+> While process isolation is provided by the container, running coding agents on a local read-write workspace carries inherent security risks (such as prompt injection, credential leaks and host-execution escapes). Please see the [Security Advisory](docs/SECURITY.md) to understand these risks and learn how to harden your setup.
+
 ## Requirements
 
 - DDEV >= v1.25.2

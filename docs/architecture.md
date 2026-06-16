@@ -66,3 +66,6 @@ The following diagram illustrates the key components, boundaries, and data flows
 *   **Host-Level Sensitive Directories:** Host directories like `~/.ssh` and the global `~/.pi` are explicitly **not** mounted to ensure strict credential and state isolation.
 *   **Host Shell/Terminal:** The developer interacts via a custom `ddev pi` command, which acts as a secure proxy to execute commands inside the container.
 *   **Public Internet:** Network access is disabled by default (`PI_OFFLINE=1`) as a security measure. The user can explicitly enable it to allow the agent to contact external LLM provider APIs.
+
+> [!WARNING]
+> While these boundaries isolate the process space and global host directories, the agent has full write access to the project workspace (`/var/www/html`). For details on how malicious actors or prompt injections can exploit this shared space to escape to the host and how to protect against it, please see the [Security Advisory and Sandbox Hardening Guide](SECURITY.md).
