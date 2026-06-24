@@ -37,6 +37,32 @@ The naming bands are:
 
 If you need to run a step as the `pi` user inside a build script, prefix the command with `sudo -u ${USERNAME}`.
 
+#### Handling PATH and Non-Interactive Shells
+
+Because Pi commands and background agent tasks (e.g., executing tools/skills) are executed in **non-interactive contexts** (such as via `ddev exec` or direct container process execution), **they do not source `~/.bashrc` or scripts under `bashrc.d/`**.
+
+If your build script installs custom binaries or tools, **do not rely on `bashrc.d/` to modify the `PATH`**. Instead, use one of the following standard approaches:
+
+1. **The Symlink Pattern (Recommended for custom locations):**
+   If you install a tool into a custom directory (e.g., `/opt/my-tool`), create a symbolic link to its executable in `/usr/local/bin` (which is always in the system `PATH` for all contexts):
+   ```bash
+   # Inside a build.d/ script running as root:
+   ln -sf /opt/my-tool/bin/my-tool-executable /usr/local/bin/my-tool
+   ```
+
+2. **Standard User-space Binaries (Recommended for user-level tools):**
+   The static `ENV PATH` configured inside the container's `Dockerfile` includes the following user-space paths:
+   - `/home/pi/.npm-global/bin`
+   - `/home/pi/.local/bin`
+   - `/home/pi/bin`
+
+   Any executables placed in these directories (e.g., via `pip install --user` or manual copies) will be automatically available in all execution contexts:
+   ```bash
+   # Inside a build.d/ script:
+   sudo -u pi mkdir -p /home/pi/.local/bin
+   sudo -u pi cp my-binary /home/pi/.local/bin/
+   ```
+
 > **Changes to `build.d/` require a full image rebuild** to take effect. Run `ddev debug rebuild` or equivalent.
 
 ### `bashrc.d/` — interactive shell ergonomics

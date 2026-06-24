@@ -99,7 +99,7 @@ WORKDIR ${USER_HOME}
 
 ENV HOME=${USER_HOME}
 ENV NPM_CONFIG_PREFIX=${USER_HOME}/.npm-global
-ENV PATH=${USER_HOME}/.npm-global/bin:$PATH
+ENV PATH=${USER_HOME}/.npm-global/bin:${USER_HOME}/.local/bin:${USER_HOME}/bin:$PATH
 
 RUN npm_config_update_notifier=false npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
 
