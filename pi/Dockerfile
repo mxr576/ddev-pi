@@ -87,7 +87,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 #   sudo -u ${USERNAME} <command>
 # ---------------------------------------------------------------------------
 COPY build.d/ /tmp/build.d/
-RUN find /tmp/build.d -maxdepth 1 -name '*.sh' | sort | while read -r script; do \
+RUN export USERNAME="${USERNAME}" \
+           USER_UID="${USER_UID}" \
+           USER_GID="${USER_GID}" \
+           USER_HOME="${USER_HOME}" \
+    && find /tmp/build.d -maxdepth 1 -name '*.sh' | sort | while read -r script; do \
         echo "[build.d] Running $script"; \
         chmod +x "$script"; \
         "$script"; \

@@ -35,7 +35,18 @@ The naming bands are:
 - `50–89`: tools and utilities
 - `90–99`: project-specific overrides
 
-If you need to run a step as the `pi` user inside a build script, prefix the command with `sudo -u ${USERNAME}`.
+#### Environment Variables in build.d/ Scripts
+
+The execution context of all `build.d/` scripts is pre-populated with several useful environment variables:
+- `USERNAME`: The name of the non-root user (defaults to `pi`).
+- `USER_HOME`: The home directory path of the non-root user (defaults to `/home/pi`).
+- `USER_UID`: The UID of the non-root user (corresponds to the host user's UID to prevent permission issues).
+- `USER_GID`: The GID of the non-root user (corresponds to the host user's GID).
+
+If you need to run a step as the `pi` user inside a build script, prefix the command with `sudo -u ${USERNAME}`. For example:
+```bash
+sudo -u "${USERNAME}" touch "${USER_HOME}/some-file"
+```
 
 #### Handling PATH and Non-Interactive Shells
 
