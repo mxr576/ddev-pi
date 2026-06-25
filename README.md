@@ -61,7 +61,10 @@ Default configurations are initialized in your project's `.pi/` directory during
 
 ## Extensibility
 
-This add-on provides several ways to customize the container environment and manage Pi extensions. For detailed information, please see the [Extensibility document](docs/extensions.md).
+This add-on provides several ways to customize the container environment, manage Pi extensions, and easily install AI skills:
+
+- To extend or customize the container environment and DDEV hooks, see the [Extensibility document](docs/extensions.md).
+- To easily install, manage, and configure AI skills, see the [AI Skills document](docs/skills.md).
 
 
 ## Uninstalling
