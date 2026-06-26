@@ -40,6 +40,21 @@ If you want to view interactive prompts, inspect installation outputs, or work f
 
 ---
 
+## Activating New Skills (Reloading)
+
+By default, Pi loads its available skills when a session starts. If you install a new skill during an active conversation, it will not be immediately visible to the agent.
+
+To make newly installed skills immediately available without restarting your session or opening a new window, send the reload command directly in the Pi chat:
+
+```text
+/reload
+```
+
+> [!NOTE]
+> The `/reload` command must be sent as a direct chat message to Pi (not as a bash command). This refreshes Pi's internal registry, registers the new skill definitions, and updates the agent's system instructions on the fly.
+
+---
+
 ## Parameters and Flags
 
 * **`<skill-ref>`**: The reference to the skill you want to install. This can be:
@@ -61,7 +76,12 @@ If you want to view interactive prompts, inspect installation outputs, or work f
   ```bash
   ddev exec -s pi npx skills add mattpocock/skills -a pi -g
   ```
-* **Install a specific sub-directory skill from GitHub non-interactively via Pi's prompt:**
+* **Install a specific sub-directory skill from GitHub non-interactively via Pi's prompt, and reload:**
   ```bash
   !! npx skills add https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling -a pi -y
   ```
+  Then, tell Pi to reload:
+  ```text
+  /reload
+  ```
+
