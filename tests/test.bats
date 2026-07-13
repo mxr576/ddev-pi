@@ -217,29 +217,6 @@ EOF
   assert_success
 }
 
-@test "build.d: empty directory (gitkeep only) builds and starts cleanly" {
-  set -eu -o pipefail
-  echo "# Testing empty build.d/ seam with project ${PROJNAME} in $(pwd)" >&3
-
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  # Confirm that .ddev/pi/build.d/ contains only .gitkeep (the default
-  # state shipped by the add-on) — no extra scripts.
-  BUILD_D_DIR="${TESTDIR}/.ddev/pi/build.d"
-  run bash -c "ls '${BUILD_D_DIR}' | grep -v '^\.' | wc -l | tr -d ' '"
-  assert_success
-  assert_output "0"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # The PI container must be reachable, proving the build succeeded.
-  run ddev exec --service pi echo "container is up"
-  assert_success
-  assert_output --partial "container is up"
-}
-
 @test "bashrc.d: contributed script defines alias available in interactive shell" {
   set -eu -o pipefail
   echo "# Testing bashrc.d/ seam with project ${PROJNAME} in $(pwd)" >&3
@@ -307,3 +284,47 @@ EOF
   assert_success
   assert_output --partial "still-healthy"
 }
+
+@test "clipboard: container interceptor and host helper work in tandem" {
+  set -eu -o pipefail
+  echo "# Testing clipboard integration with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # 1. Test Container-side Interceptor
+  # xclip, xsel, wl-copy should write to the shared volume file bridge.
+  run ddev exec --service pi bash -c "echo 'interceptor-test-content' | xclip"
+  assert_success
+
+  # Verify the pending file exists and contains the correct data.
+  assert_file_exists "${TESTDIR}/.ddev/.clipboard_pending"
+  run cat "${TESTDIR}/.ddev/.clipboard_pending"
+  assert_output --partial "interceptor-test-content"
+
+  # 2. Test Host-side Python Helper
+  # Start the helper on the host pointing to the pending file.
+  python3 "${TESTDIR}/.ddev/pi/clipboard-helper.py" "${TESTDIR}/.ddev/.clipboard_pending" > "${TESTDIR}/.ddev/clipboard-test.log" 2>&1 &
+  HELPER_PID=$!
+
+  # Wait a moment for the helper to process and delete the file.
+  for i in $(seq 1 20); do
+    [ ! -f "${TESTDIR}/.ddev/.clipboard_pending" ] && break
+    sleep 0.1
+  done
+
+  # Terminate helper
+  kill "${HELPER_PID}" || true
+  wait "${HELPER_PID}" 2>/dev/null || true
+
+  # The pending file should have been deleted by the helper.
+  assert_file_not_exists "${TESTDIR}/.ddev/.clipboard_pending"
+
+  # Verify in logs that the helper started and attempted copying.
+  run cat "${TESTDIR}/.ddev/clipboard-test.log"
+  assert_output --partial "Starting clipboard helper"
+}
+

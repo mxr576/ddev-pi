@@ -45,6 +45,11 @@ services:
       PI_VERSION: ${PI_VERSION:-latest}
       TZ: ${TZ:-UTC}
       IS_DDEV_PROJECT: ${IS_DDEV_PROJECT}
+      # Satisfy the Pi Coding Agent's clipboard display detection on Linux.
+      # The agent guards executing xclip/xsel/wl-copy behind checks for
+      # DISPLAY or WAYLAND_DISPLAY. Defining a dummy DISPLAY enables the
+      # Linux clipboard utility path so our custom interceptors can work.
+      DISPLAY: ":0"
     volumes:
       - pi-agent:/home/pi/.pi
       - ${DDEV_APPROOT}:/var/www/html

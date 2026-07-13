@@ -1,7 +1,58 @@
 #!/usr/bin/env bash
 #ddev-generated
-## Description: Run Pi in the pi sidecar
+## Description: Run Pi in the pi sidecar with host clipboard integration
 ## Usage: pi [args...]
 set -euo pipefail
 
-exec ddev exec --service=pi pi "$@"
+# Find the project root
+# DDEV host commands run with DDEV_APPROOT defined.
+# If not defined, fallback to finding the closest .ddev directory.
+if [ -z "${DDEV_APPROOT:-}" ]; then
+  cur_dir="$PWD"
+  while [ "$cur_dir" != "/" ]; do
+    if [ -d "$cur_dir/.ddev" ]; then
+      export DDEV_APPROOT="$cur_dir"
+      break
+    fi
+    cur_dir="$(dirname "$cur_dir")"
+  done
+fi
+
+if [ -z "${DDEV_APPROOT:-}" ]; then
+  echo "Error: Could not determine DDEV_APPROOT. Please run from within a DDEV project." >&2
+  exit 1
+fi
+
+PENDING_FILE="${DDEV_APPROOT}/.ddev/.clipboard_pending"
+HELPER_SCRIPT="${DDEV_APPROOT}/.ddev/pi/clipboard-helper.py"
+LOG_FILE="${DDEV_APPROOT}/.ddev/clipboard.log"
+
+# Clean up any previous pending file
+rm -f "$PENDING_FILE"
+
+# Start the clipboard helper in the background if python3 is available
+HELPER_PID=""
+if command -v python3 >/dev/null 2>&1; then
+  if [ -f "$HELPER_SCRIPT" ]; then
+    python3 "$HELPER_SCRIPT" "$PENDING_FILE" > "$LOG_FILE" 2>&1 &
+    HELPER_PID=$!
+  else
+    echo "Warning: Clipboard helper script not found at '$HELPER_SCRIPT'. Clipboard sync is disabled." >&2
+  fi
+else
+  echo "Warning: 'python3' was not found on your host system. Clipboard sync between the Pi container and your host is disabled." >&2
+fi
+
+# Cleanup on exit
+cleanup() {
+  if [ -n "$HELPER_PID" ]; then
+    kill "$HELPER_PID" 2>/dev/null || true
+    wait "$HELPER_PID" 2>/dev/null || true
+  fi
+  rm -f "$PENDING_FILE"
+}
+
+trap cleanup EXIT INT TERM
+
+# Run the containerized Pi Coding Agent
+ddev exec --service=pi pi "$@"
