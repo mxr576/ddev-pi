@@ -6,8 +6,8 @@ set -euo pipefail
 cat <<'EOF' > /usr/local/bin/clipboard-interceptor
 #!/usr/bin/env bash
 # Read stdin, write atomically to shared volume
-cat > /var/www/html/.ddev/.clipboard_pending.tmp
-mv /var/www/html/.ddev/.clipboard_pending.tmp /var/www/html/.ddev/.clipboard_pending
+cat > /var/www/html/.ddev/pi/.clipboard_pending.tmp
+mv /var/www/html/.ddev/pi/.clipboard_pending.tmp /var/www/html/.ddev/pi/.clipboard_pending
 exit 0
 EOF
 

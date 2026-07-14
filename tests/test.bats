@@ -301,18 +301,18 @@ EOF
   assert_success
 
   # Verify the pending file exists and contains the correct data.
-  assert_file_exists "${TESTDIR}/.ddev/.clipboard_pending"
-  run cat "${TESTDIR}/.ddev/.clipboard_pending"
+  assert_file_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
+  run cat "${TESTDIR}/.ddev/pi/.clipboard_pending"
   assert_output --partial "interceptor-test-content"
 
   # 2. Test Host-side Python Helper
   # Start the helper on the host pointing to the pending file.
-  python3 "${TESTDIR}/.ddev/pi/clipboard-helper.py" "${TESTDIR}/.ddev/.clipboard_pending" > "${TESTDIR}/.ddev/clipboard-test.log" 2>&1 &
+  python3 "${TESTDIR}/.ddev/pi/clipboard-helper.py" "${TESTDIR}/.ddev/pi/.clipboard_pending" > "${TESTDIR}/.ddev/clipboard-test.log" 2>&1 &
   HELPER_PID=$!
 
   # Wait a moment for the helper to process and delete the file.
   for i in $(seq 1 20); do
-    [ ! -f "${TESTDIR}/.ddev/.clipboard_pending" ] && break
+    [ ! -f "${TESTDIR}/.ddev/pi/.clipboard_pending" ] && break
     sleep 0.1
   done
 
@@ -321,7 +321,7 @@ EOF
   wait "${HELPER_PID}" 2>/dev/null || true
 
   # The pending file should have been deleted by the helper.
-  assert_file_not_exists "${TESTDIR}/.ddev/.clipboard_pending"
+  assert_file_not_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
 
   # Verify in logs that the helper started and attempted copying.
   run cat "${TESTDIR}/.ddev/clipboard-test.log"

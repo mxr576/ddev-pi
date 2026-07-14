@@ -1,3 +1,6 @@
 #ddev-generated
 project-defaults
 global
+clipboard.log
+.clipboard_pending
+.clipboard_pending.tmp

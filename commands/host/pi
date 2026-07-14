@@ -23,9 +23,9 @@ if [ -z "${DDEV_APPROOT:-}" ]; then
   exit 1
 fi
 
-PENDING_FILE="${DDEV_APPROOT}/.ddev/.clipboard_pending"
+PENDING_FILE="${DDEV_APPROOT}/.ddev/pi/.clipboard_pending"
 HELPER_SCRIPT="${DDEV_APPROOT}/.ddev/pi/clipboard-helper.py"
-LOG_FILE="${DDEV_APPROOT}/.ddev/clipboard.log"
+LOG_FILE="${DDEV_APPROOT}/.ddev/pi/clipboard.log"
 
 # Clean up any previous pending file
 rm -f "$PENDING_FILE"

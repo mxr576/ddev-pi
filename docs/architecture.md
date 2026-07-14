@@ -74,8 +74,8 @@ To allow the containerized Pi Coding Agent to interact with the host system's cl
 ### How it works:
 1. **Container Interceptors:** Standard Linux clipboard utilities (`xclip`, `xsel`, `wl-copy`) are replaced with a mock wrapper script inside the container's `/usr/local/bin/`.
 2. **Display Emulation:** The container runs with the `DISPLAY: ":0"` environment variable defined. This satisfies the Pi Coding Agent's platform detection logic, forcing it to invoke the Linux clipboard tools instead of falling back to OSC 52.
-3. **Pending File Bridge:** When the agent triggers a clipboard write (such as via the `/copy` command), the mock utility captures the standard input and writes the payload atomically to the shared project volume at `/var/www/html/.ddev/.clipboard_pending`.
-4. **Host Clipboard Daemon:** On the host, the custom `ddev pi` wrapper starts a lightweight background Python daemon (`pi/clipboard-helper.py`) that monitors the project directory. When it detects `.clipboard_pending`, it reads the contents, copies them to the host's system clipboard using native host OS utilities (like `pbcopy`, `clip.exe`, or `wl-copy`/`xclip`), and then deletes the pending file.
+3. **Pending File Bridge:** When the agent triggers a clipboard write (such as via the `/copy` command), the mock utility captures the standard input and writes the payload atomically to the shared project volume at `/var/www/html/.ddev/pi/.clipboard_pending`.
+4. **Host Clipboard Daemon:** On the host, the custom `ddev pi` wrapper starts a lightweight background Python daemon (`pi/clipboard-helper.py`) that monitors the project directory. When it detects `.clipboard_pending` under `.ddev/pi/`, it reads the contents, copies them to the host's system clipboard using native host OS utilities (like `pbcopy`, `clip.exe`, or `wl-copy`/`xclip`), and then deletes the pending file.
 
 This design is fully secure, bypasses host firewalls, opens no ports, and works cross-platform across macOS, Windows/WSL, and Linux.
 
