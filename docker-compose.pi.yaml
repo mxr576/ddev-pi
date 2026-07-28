@@ -20,9 +20,11 @@ services:
     tty: true
     healthcheck:
       test: ["CMD-SHELL", "pi --version || exit 1"]
-      interval: 30s
+      interval: 10s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - default
       - ddev_default
