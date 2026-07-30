@@ -50,6 +50,9 @@ if [ -d "${ENTRYPOINT_D}" ]; then
   done < <(find "${ENTRYPOINT_D}" -maxdepth 1 -type f -name '*.sh' | sort)
 fi
 
+# Signal that container initialization and all entrypoint hooks are complete
+touch /tmp/.entrypoint_finished
+
 # Trap signals for graceful shutdown
 trap 'echo "Shutting down Pi Workspace..."; exit 0' TERM INT
 

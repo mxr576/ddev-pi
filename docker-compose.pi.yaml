@@ -19,7 +19,7 @@ services:
     stdin_open: true
     tty: true
     healthcheck:
-      test: ["CMD-SHELL", "pi --version || exit 1"]
+      test: ["CMD-SHELL", "[ -f /tmp/.entrypoint_finished ] && pi --version || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 5

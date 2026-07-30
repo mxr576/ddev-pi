@@ -96,6 +96,16 @@ teardown() {
   assert_output --partial "container is up"
 }
 
+@test "entrypoint readiness flag is created after startup" {
+  set -eu -o pipefail
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+  run ddev exec --service pi test -f /tmp/.entrypoint_finished
+  assert_success
+}
+
 @test "entrypoint.d: hooks run in lexicographic order" {
   set -eu -o pipefail
   run ddev add-on get "${DIR}"
