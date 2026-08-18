@@ -26,6 +26,15 @@ try {
 } catch (e) {}
 "
 
+# Ensure pi wrapper script disables terminal suspension on invocation
+mkdir -p "${HOME}/.pi/agent/bin"
+cat <<'EOF' > "${HOME}/.pi/agent/bin/pi"
+#!/usr/bin/env bash
+stty susp undef 2>/dev/null || true
+exec /home/pi/.npm-global/bin/pi "$@"
+EOF
+chmod +x "${HOME}/.pi/agent/bin/pi"
+
 # Setup SSH connectivity to DDEV web container
 SSH_KEY_DIR="/var/www/html/.ddev/.agent-ssh-keys"
 

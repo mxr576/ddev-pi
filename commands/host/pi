@@ -62,5 +62,5 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# Run the containerized Pi Coding Agent with disabled terminal suspension
-ddev exec --service=pi bash -c "stty susp undef 2>/dev/null; exec pi \"\$@\"" -- "$@"
+# Run the containerized Pi Coding Agent
+ddev exec --service=pi pi "$@"
