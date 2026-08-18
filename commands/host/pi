@@ -43,8 +43,16 @@ else
   echo "Warning: 'python3' was not found on your host system. Clipboard sync between the Pi container and your host is disabled." >&2
 fi
 
+# Save current terminal state and disable Ctrl+Z suspension signal on host
+OLD_STTY=$(stty -g 2>/dev/null || true)
+stty susp undef 2>/dev/null || true
+trap '' TSTP
+
 # Cleanup on exit
 cleanup() {
+  if [ -n "${OLD_STTY:-}" ]; then
+    stty "$OLD_STTY" 2>/dev/null || true
+  fi
   if [ -n "$HELPER_PID" ]; then
     kill "$HELPER_PID" 2>/dev/null || true
     wait "$HELPER_PID" 2>/dev/null || true
@@ -54,5 +62,5 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# Run the containerized Pi Coding Agent
-ddev exec --service=pi pi "$@"
+# Run the containerized Pi Coding Agent with disabled terminal suspension
+ddev exec --service=pi bash -c "stty susp undef 2>/dev/null; exec pi \"\$@\"" -- "$@"

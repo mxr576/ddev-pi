@@ -8,6 +8,24 @@ if [ ! -d "${HOME}/.pi" ]; then
   exit 1
 fi
 
+# Ensure keybindings.json is initialized and app.suspend is disabled
+KEYBINDINGS_FILE="${HOME}/.pi/agent/keybindings.json"
+mkdir -p "${HOME}/.pi/agent"
+node -e "
+const fs = require('fs');
+const path = '${KEYBINDINGS_FILE}';
+try {
+  let data = {};
+  try {
+    data = JSON.parse(fs.readFileSync(path, 'utf8'));
+  } catch (e) {}
+  if (data['app.suspend'] !== '') {
+    data['app.suspend'] = '';
+    fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+  }
+} catch (e) {}
+"
+
 # Setup SSH connectivity to DDEV web container
 SSH_KEY_DIR="/var/www/html/.ddev/.agent-ssh-keys"
 
