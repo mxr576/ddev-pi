@@ -28,6 +28,7 @@ RUN apt-get update \
        python-is-python3 \
        git \
        jq \
+       make \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
