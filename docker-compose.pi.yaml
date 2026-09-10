@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile
       args:
         PI_VERSION: ${PI_VERSION:-latest}
+        YQ_VERSION: ${YQ_VERSION:-latest}
         USERNAME: pi
         USER_UID: ${DDEV_UID:-1000}
         USER_GID: ${DDEV_GID:-1000}

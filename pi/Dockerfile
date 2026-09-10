@@ -6,6 +6,7 @@ ARG USERNAME=pi
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG PI_VERSION=latest
+ARG YQ_VERSION=latest
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV USERNAME=${USERNAME}
@@ -29,6 +30,23 @@ RUN apt-get update \
        jq \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
+
+# Install yq (mikefarah/yq)
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "${ARCH}" in \
+         amd64) YQ_ARCH="amd64" ;; \
+         arm64) YQ_ARCH="arm64" ;; \
+         armhf) YQ_ARCH="arm" ;; \
+         i386) YQ_ARCH="386" ;; \
+         *) YQ_ARCH="${ARCH}" ;; \
+       esac \
+    && case "${YQ_VERSION}" in \
+         latest) YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" ;; \
+         v*) YQ_URL="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${YQ_ARCH}" ;; \
+         *) YQ_URL="https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${YQ_ARCH}" ;; \
+       esac \
+    && curl -fsSL "${YQ_URL}" -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
 
 # Install Node.js LTS via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
