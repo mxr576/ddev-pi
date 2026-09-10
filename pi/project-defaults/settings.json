@@ -1,14 +1,13 @@
 {
   "_comment": "#ddev-generated",
-  "defaultThinkingLevel": "medium",
+  "theme": "dark",
   "enabledModels": [
     "*"
   ],
-  "terminal": {
-    "showTerminalProgress": true
-  },
-  "httpIdleTimeoutMs": 30000,
+  "defaultThinkingLevel": "medium",
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
-  "theme": "dark"
+  "terminal": {
+    "showTerminalProgress": true
+  }
 }
