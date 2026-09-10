@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#ddev-generated
+#
+# ddev-web-proxy
+#
+# Forwards tool execution from the PI container to the DDEV web container
+# over SSH. This provides transparent access to the web container's PHP runtime,
+# Composer, Drush, and testing tools for both interactive and non-interactive
+# contexts (such as Makefile recipes, scripts, and subshells).
+
+tool="$(basename "$0")"
+
+# If invoked directly as ddev-web-proxy, take the tool name from the first argument.
+if [ "$tool" = "ddev-web-proxy" ]; then
+  if [ $# -eq 0 ]; then
+    echo "Usage: ddev-web-proxy <command> [args...]" >&2
+    exit 1
+  fi
+  tool="$1"
+  shift
+fi
+
+# Rewrite vendor/bin tools to canonical vendor/bin/<tool> if present in the project.
+case "$tool" in
+  drush|phpunit|phpstan|phpcs|phpcbf)
+    if [ -f "vendor/bin/$tool" ]; then
+      cmd="vendor/bin/$tool"
+    else
+      cmd="$tool"
+    fi
+    ;;
+  *)
+    cmd="$tool"
+    ;;
+esac
+
+# Safely escape arguments for the remote shell.
+for arg in "$@"; do
+  cmd="${cmd} $(printf "%q" "$arg")"
+done
+
+# Allocate pseudo-terminal if connected to an interactive TTY.
+ssh_opts=()
+if [ -t 0 ] && [ -t 1 ]; then
+  ssh_opts+=("-t")
+fi
+
+escaped_pwd=$(printf "%q" "$PWD")
+
+# Execute inside the web container:
+# 1. Export environment variables from /proc/1/environ so non-login shells inherit Docker web_environment.
+# 2. Match the current working directory if it exists inside the web container, otherwise fallback to /var/www/html.
+# 3. Run the command with exit status preserved.
+exec ssh "${ssh_opts[@]}" web "export \$(cat /proc/1/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '^[a-zA-Z_][a-zA-Z0-9_]*=' | xargs -d '\\n') 2>/dev/null; cd $escaped_pwd 2>/dev/null || cd /var/www/html; $cmd"

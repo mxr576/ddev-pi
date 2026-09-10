@@ -338,3 +338,57 @@ EOF
   assert_output --partial "Starting clipboard helper"
 }
 
+@test "web toolchain proxies: transparently forward commands to web container" {
+  set -eu -o pipefail
+  echo "# Testing web toolchain proxy shims with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # Verify shims are installed and executable on $PATH
+  run ddev exec --service pi which php composer drush phpunit
+  assert_success
+
+  # Verify direct invocation works and reaches web container
+  run ddev exec --service pi php -v
+  assert_success
+  assert_output --partial "PHP"
+
+  run ddev exec --service pi composer --version
+  assert_success
+  assert_output --partial "Composer"
+}
+
+@test "make: executes targets calling proxied web tools" {
+  set -eu -o pipefail
+  echo "# Testing make calling proxied web tools with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # Verify make is installed in the PI container
+  run ddev exec --service pi which make
+  assert_success
+
+  # Execute a Makefile target that invokes a proxied tool (php).
+  # Under the old bash alias approach, make subshells (/bin/sh) could not resolve
+  # bash functions. The /usr/local/bin proxy shim resolves seamlessly.
+  run ddev exec --service pi bash -c '
+    cat << "EOF" > /var/www/html/Makefile.test
+test:
+	php -r "echo \"make-proxy-works\n\";"
+EOF
+    make -f /var/www/html/Makefile.test test
+    rm -f /var/www/html/Makefile.test
+  '
+  assert_success
+  assert_output --partial "make-proxy-works"
+}
+
+

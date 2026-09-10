@@ -88,6 +88,13 @@ RUN mkdir -p ${USER_HOME}/.npm-global \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Copy and configure web container tool forwarding proxy
+COPY ddev-web-proxy /usr/local/bin/ddev-web-proxy
+RUN chmod +x /usr/local/bin/ddev-web-proxy \
+    && for tool in php composer drush phpunit phpstan phpcs phpcbf; do \
+         ln -sf /usr/local/bin/ddev-web-proxy /usr/local/bin/${tool}; \
+       done
+
 # ---------------------------------------------------------------------------
 # build.d/ extensibility seam
 #

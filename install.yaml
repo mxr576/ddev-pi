@@ -10,11 +10,12 @@ project_files:
   - pi/Dockerfile
   - pi/ssh-config
   - pi/entrypoint.sh
+  - pi/ddev-web-proxy
   - pi/build.d/.gitkeep
   - pi/build.d/10-clipboard.sh
   - pi/clipboard-helper.py
   - pi/entrypoint.d/.gitkeep
-  - pi/bashrc.d/50-drupal-aliases.sh
+  - pi/bashrc.d/.gitkeep
   - pi/global/agent/extensions/web-service-commands.ts
   - pi/project-defaults/settings.json
   - pi/project-defaults/README.md
@@ -51,3 +52,6 @@ post_install_actions:
     EOF
       echo "Initialized trust.json"
     fi
+
+    # Remove obsolete files from previous versions of this add-on
+    rm -f "${DDEV_APPROOT}/.ddev/pi/bashrc.d/50-drupal-aliases.sh"
