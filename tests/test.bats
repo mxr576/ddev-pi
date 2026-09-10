@@ -218,12 +218,12 @@ EOF
   run ddev restart && ddev start --profiles=pi
   assert_success
 
-  # The fixture script installs 'jq', which must now be present inside the
+  # The fixture script installs 'tree', which must now be present inside the
   # running PI container.
-  run ddev exec --service pi which jq
+  run ddev exec --service pi which tree
   assert_success
 
-  run ddev exec --service pi jq --version
+  run ddev exec --service pi tree --version
   assert_success
 }
 
