@@ -28,9 +28,10 @@ ddev restart && ddev start --profiles=pi
 by default, the container will not exist and any subsequent `ddev exec --service pi`
 call will fail with "no such service".
 
-Note: `ddev utility rebuild -s <service>` is currently broken for profile-gated
-services on DDEV HEAD (the build succeeds but the recreate step cannot resolve
-the service). Track [ddev/ddev#8463](https://github.com/ddev/ddev/pull/8463)
-for the fix. Until that lands, `ddev restart && ddev start --profiles=pi` is
-the correct and only reliable way to force a PI image rebuild and bring the
-container up in tests.
+Note: `ddev restart` (including `--no-cache`) does not rebuild profile-gated
+services ([ddev/ddev#8817](https://github.com/ddev/ddev/issues/8817)). While targeted rebuilding via
+`ddev utility rebuild -s <service>` (or `ddev debug rebuild -s <service>`)
+for profile-gated services was fixed in DDEV v1.25.3 ([ddev/ddev#8463](https://github.com/ddev/ddev/pull/8463)),
+`ddev restart` does not support `--profiles` yet ([ddev/ddev#7904](https://github.com/ddev/ddev/issues/7904)).
+Therefore, `ddev restart && ddev start --profiles=pi` is required after rebuilding to bring the
+Pi container up with all dependencies.

@@ -30,8 +30,22 @@ For a detailed diagram and breakdown of the system's components and security bou
 
 ```bash
 ddev add-on get mxr576/ddev-pi
-ddev restart
+ddev restart && ddev start --profiles=pi
 ```
+
+## Updating
+
+When updating this add-on (or changing files that affect the Pi Docker image), a standard `ddev restart` or `ddev restart --no-cache` will **not** rebuild the Pi container image because the Pi service is gated behind an optional Docker Compose profile (tracked in [ddev/ddev#8817](https://github.com/ddev/ddev/issues/8817)).
+
+To update the add-on and properly rebuild and restart the Pi service:
+
+```bash
+ddev add-on get mxr576/ddev-pi
+ddev debug rebuild -s pi
+ddev restart && ddev start --profiles=pi
+```
+
+> **Note:** `ddev debug rebuild -s <service>` (or its alias `ddev utility rebuild -s <service>`) for profile-gated services requires DDEV >= v1.25.3 ([ddev/ddev#8463](https://github.com/ddev/ddev/pull/8463)). Following up with `ddev restart && ddev start --profiles=pi` ensures all project containers and profile services restart cleanly together (see [ddev/ddev#7904](https://github.com/ddev/ddev/issues/7904)).
 
 ## Usage
 

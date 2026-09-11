@@ -74,7 +74,7 @@ If your build script installs custom binaries or tools, **do not rely on `bashrc
    sudo -u pi cp my-binary /home/pi/.local/bin/
    ```
 
-> **Changes to `build.d/` require a full image rebuild** to take effect. Run `ddev debug rebuild` or equivalent.
+> **Changes to `build.d/` require a full image rebuild** to take effect. Run `ddev debug rebuild -s pi && ddev restart && ddev start --profiles=pi`.
 
 ### `bashrc.d/` — interactive shell ergonomics
 
@@ -82,7 +82,7 @@ Place scripts here to customize the interactive shell experience inside the PI c
 
 This seam is **for interactive shells only**. Scripts placed here do not affect PI's autonomous tool execution or entrypoint hooks.
 
-> **A `ddev restart` is sufficient** to pick up changes. No rebuild is needed.
+> **A `ddev restart && ddev start --profiles=pi` is sufficient** to pick up changes. No rebuild is needed.
 
 ### `entrypoint.d/` — runtime startup hooks
 
@@ -90,7 +90,7 @@ Place scripts here to run initialization logic on every container startup. Scrip
 
 Hook failures emit a warning but do not crash the container, so a broken hook will not prevent the PI service from starting.
 
-> **A `ddev restart` is sufficient** to pick up changes. No rebuild is needed.
+> **A `ddev restart && ddev start --profiles=pi` is sufficient** to pick up changes. No rebuild is needed.
 
 ### `global/agent/extensions/` — PI agent command routing
 
@@ -103,4 +103,4 @@ myaddon-summarize.ts
 myaddon-review.ts
 ```
 
-> **A `ddev restart` is sufficient** to pick up new or updated extensions. No rebuild is needed.
+> **A `ddev restart && ddev start --profiles=pi` is sufficient** to pick up new or updated extensions. No rebuild is needed.
