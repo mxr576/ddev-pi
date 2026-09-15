@@ -79,6 +79,7 @@ fi
 
 # Signal that container initialization and all entrypoint hooks are complete
 touch /tmp/.entrypoint_finished
+echo "[entrypoint] Pi sidecar initialization complete."
 
 # Trap signals for graceful shutdown
 trap 'echo "Shutting down Pi Workspace..."; exit 0' TERM INT
