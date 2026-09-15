@@ -2,11 +2,12 @@
 services:
   pi:
     container_name: ddev-${DDEV_SITENAME}-pi
-    image: ddev-pi-${DDEV_SITENAME}-built
+    image: ${BASE_IMAGE:-ubuntu:24.04}-${DDEV_SITENAME}-built
     build:
       context: ${DDEV_APPROOT}/.ddev/pi
       dockerfile: Dockerfile
       args:
+        BASE_IMAGE: ${BASE_IMAGE:-ubuntu:24.04}
         PI_VERSION: ${PI_VERSION:-latest}
         YQ_VERSION: ${YQ_VERSION:-latest}
         USERNAME: pi
