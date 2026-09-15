@@ -19,7 +19,6 @@ services:
     working_dir: /var/www/html
     entrypoint: ["/usr/local/bin/entrypoint.sh"]
     stdin_open: true
-    tty: true
     healthcheck:
       test: ["CMD-SHELL", "[ -f /tmp/.entrypoint_finished ] && pi --version || exit 1"]
       interval: 10s

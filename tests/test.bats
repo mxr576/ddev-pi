@@ -178,6 +178,11 @@ EOF
   run ddev exec --service pi cat /tmp/post-failure.log
   assert_success
   assert_output --partial "still-running"
+
+  # Verify the warning was emitted in the container logs.
+  run ddev logs -s pi
+  assert_success
+  assert_output --partial "WARNING: 10-failing.sh exited with a non-zero status"
 }
 
 @test "entrypoint.d: successful hook produces observable side effects" {
@@ -293,6 +298,11 @@ EOF
   run ddev exec --service pi echo "still-healthy"
   assert_success
   assert_output --partial "still-healthy"
+
+  # Verify the warning was emitted in the container logs.
+  run ddev logs -s pi
+  assert_success
+  assert_output --partial "WARNING: 60-failing.sh exited with a non-zero status"
 }
 
 @test "clipboard: container interceptor and host helper work in tandem" {
