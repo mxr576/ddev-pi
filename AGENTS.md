@@ -35,3 +35,7 @@ for profile-gated services was fixed in DDEV v1.25.3 ([ddev/ddev#8463](https://g
 `ddev restart` does not support `--profiles` yet ([ddev/ddev#7904](https://github.com/ddev/ddev/issues/7904)).
 Therefore, `ddev restart && ddev start --profiles=pi` is required after rebuilding to bring the
 Pi container up with all dependencies.
+
+## Diagrams
+
+Plain 7-bit ASCII only (use `+`, `-`, `|`, `v`, `^`, `<`, `>`). Max 75 cols wide. Never use Unicode box-drawing characters (`┌─│└▼`). Space-padded only.
