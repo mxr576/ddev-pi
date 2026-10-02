@@ -67,6 +67,30 @@ The following diagram illustrates the key components, boundaries, and data flows
 *   **Host Shell/Terminal:** The developer interacts via a custom `ddev pi` command, which acts as a secure proxy to execute commands inside the container.
 *   **Public Internet:** Network access is disabled by default (`PI_OFFLINE=1`) as a security measure. The user can explicitly enable it to allow the agent to contact external LLM provider APIs.
 
+## Offline Mode (`PI_OFFLINE=1`)
+
+The add-on sets `PI_OFFLINE=1` by default. This is a deliberate, defence-in-depth decision that
+blocks every category of Pi-initiated outbound network traffic that is not
+necessary for day-to-day coding-agent use:
+
+| Blocked behaviour | Why it is blocked |
+|---|---|
+| Background model-catalog refresh (`refreshModelCatalogs`) | Avoids unexpected outbound calls to public LLM registries at session start. |
+| Version check against pi.dev (`checkForNewPiVersion`) | Removes CI noise and eliminates the risk of version-check calls leaking environment metadata. |
+| Install telemetry ping (`reportInstallTelemetry`) | No project or host data is sent to pi.dev. |
+| Package-update probes (`checkForPackageUpdates`) | Keeps the container hermetic; package versions are pinned at image build time. |
+| Automatic tool downloads (`fd`, `rg`) | Required CLI tools are installed at image build time; runtime downloads are not needed and could introduce untrusted binaries. |
+| Bug-report uploads | Forces reports to be exported locally; no data leaves the container silently. |
+
+The companion variables `PI_SKIP_VERSION_CHECK=1` and `PI_TELEMETRY=0` are set
+alongside `PI_OFFLINE=1` for defence in depth: each independently prevents its
+respective class of outbound traffic even if `PI_OFFLINE` were overridden by the
+user.
+
+Users who need Pi to reach the public internet (for example, to contact an
+external LLM provider API directly) can override this default by setting
+`PI_OFFLINE=0` in their DDEV project configuration.
+
 ## Clipboard integration
 
 To allow the containerized Pi Coding Agent to interact with the host system's clipboard without breaching container boundaries, opening ports, or exposing host networks, the add-on implements a **Shared Volume File Bridge**.
