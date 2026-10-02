@@ -14,6 +14,7 @@ This DDEV add-on provides a fully containerized, isolated environment for the [P
 - **Network:** The agent is isolated within the DDEV project network.
 - **Sensitive data:** No host-level sensitive directories (e.g., `~/.ssh`) are mounted.
 - **Offline by default:** Network-dependent features (`PI_OFFLINE=1`, `PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0`) are disabled by default to keep the container self-contained and avoid unexpected outbound traffic.
+- **Supply-chain:** Pi is installed from npm with lifecycle scripts disabled (`--ignore-scripts`) at image build time. The agent version is controlled by the `PI_VERSION` build argument, which defaults to `latest`. **Pin `PI_VERSION` to an exact version** for reproducible, tamper-resistant builds — see [Pi installation method & supply-chain hardening](docs/SECURITY.md#5-pi-installation-method--supply-chain-hardening).
 
 For a detailed diagram and breakdown of the system's components and security boundaries, please see the [Architecture document](docs/architecture.md).
 

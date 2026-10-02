@@ -126,7 +126,106 @@ Below is a highly recommended configuration pattern that:
 > [!WARNING]
 > This list of blocked patterns is **not complete**. There are other files (such as package managers' configuration files like `package.json` scripts, `composer.json` scripts, or CI/CD pipelines) that can also execute commands when triggered on the host. Security is an ongoing review process.
 
-## 5. Best Practices for Secure Workflows
+## 5. Pi Installation Method & Supply-Chain Hardening
+
+The Pi Coding Agent is installed into the container from the npm registry:
+
+```dockerfile
+# pi/Dockerfile
+RUN npm_config_update_notifier=false /usr/bin/npm install -g \
+    --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
+```
+
+This section explains why this method was chosen, why it is safe, and the one
+action consumers must take to protect themselves from supply-chain attacks.
+
+### Why the npm install method (and not a prebuilt binary)?
+
+Pi also publishes self-contained release binaries on GitHub. We deliberately do
+**not** use them, for the following reasons:
+
+- **Node.js is already required in the container.** The image installs Node.js
+  independently (via NodeSource) because Pi extensions are installed and run
+  through npm (`ddev pi install npm:<package>`) and extension development needs
+  the Node.js toolchain. A prebuilt Pi binary bundles its own Node.js runtime,
+  so it would ship a *second* runtime that duplicates one that must exist
+  anyway — added image weight for no benefit.
+- **The npm package is cross-platform by construction.** The add-on must build
+  on every architecture DDEV runs on (linux/amd64, linux/arm64, and the macOS
+  variants used by Docker). A single npm package works everywhere, whereas
+  prebuilt binaries require per-architecture asset selection, checksum tracking,
+  and failure modes ("wrong binary for arch") inside the Dockerfile.
+- **A binary does not remove the dependency tree.** The agent's dependencies
+  still exist inside a prebuilt binary; they are merely frozen at Pi's build
+  time instead of ours. Switching to a binary trades away flexibility and
+  cross-platform support without actually shrinking the attack surface.
+
+### Why the current method is safe
+
+- **Lifecycle scripts are disabled at install time.** The `--ignore-scripts`
+  flag prevents the agent package and any of its dependencies from executing
+  `preinstall`/`install`/`postinstall` hooks during the image build. This
+  neutralizes the most common npm supply-chain attack vector — malicious
+  lifecycle scripts that run automatically on `npm install`.
+- **The install happens at image build time, not at runtime.** Once the image
+  is built, the agent is baked into the immutable image layer. A given image
+  does not re-resolve or re-download the package on every start, so the trusted
+  set of bits is fixed for the lifetime of that image.
+- **npm verifies package integrity on download.** npm validates the registry's
+  content-integrity hash for every fetched tarball before it is unpacked, so a
+  corrupted or tampered download is rejected.
+
+### REQUIRED: lock `PI_VERSION` to a specific version
+
+> [!IMPORTANT]
+> `PI_VERSION` defaults to `latest`. For any real/shared/CI usage, you MUST
+> pin it to an exact published version. Leaving it at `latest` means a rebuild
+> can silently pull a newer — and potentially compromised — release.
+
+The version installed is controlled entirely by the `PI_VERSION` build argument,
+which is wired through `docker-compose.pi.yaml` from the `PI_VERSION`
+environment variable and defaults to `latest`:
+
+```yaml
+# docker-compose.pi.yaml
+args:
+  PI_VERSION: ${PI_VERSION:-latest}
+```
+
+`latest` is a *floating* tag: it resolves to whatever the newest published
+release happens to be at the moment the image is built. This is convenient for
+quick evaluation, but it is **not safe for reproducible or shared setups**:
+
+- If an attacker ever manages to publish a malicious release to the registry,
+  an unpinned build will pull it automatically on the next rebuild.
+- Two developers (or CI and a laptop) building "the same" project can end up
+  with different agent versions, making compromises hard to detect and
+  incidents hard to reproduce.
+
+**Pin to an exact version** so that every build is reproducible and every
+upgrade is a reviewed, intentional change. Set it per project in
+`.ddev/.env` (or your shell/CI environment):
+
+```bash
+# .ddev/.env  (or exported in your shell / CI)
+PI_VERSION=1.0.0
+```
+
+Then rebuild the Pi image so the pin takes effect:
+
+```bash
+ddev debug rebuild -s pi
+ddev restart && ddev start --profiles=pi
+```
+
+> [!NOTE]
+> This add-on intentionally ships `latest` as its *default* rather than a
+> hard-coded version. Pinning is the responsibility of the consumer: projects
+> and add-ons that build on top of `ddev-pi` know which Pi version they have
+> validated and should lock to it explicitly. Treat a `PI_VERSION` bump exactly
+> like any other dependency upgrade — review the release, then commit the pin.
+
+## 6. Best Practices for Secure Workflows
 
 - **Always Review Diffs:** Before running `ddev start`, `git commit`, `composer install`, or `npm install` after an agent session, run `git diff` to inspect what files were modified.
 - **Avoid Global Shell Whitelists:** Do not add generic scripting engines (such as `python`, `node`, `bash`, or write-enabling tools like `sed` and `awk`) to `pi-guard`'s `bash` whitelist, as they can bypass path-level restrictions.
