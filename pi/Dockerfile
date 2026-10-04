@@ -131,8 +131,25 @@ ENV HOME=${USER_HOME}
 ENV NPM_CONFIG_PREFIX=${USER_HOME}/.npm-global
 ENV PATH=${USER_HOME}/.pi/agent/bin:${USER_HOME}/.npm-global/bin:${USER_HOME}/.local/bin:${USER_HOME}/bin:$PATH
 
+# Install Pi using the official release package-lock.json and npm ci to strictly
+# pin and cryptographically verify all direct and transitive dependencies.
 # Use /usr/bin/npm explicitly to bypass the /usr/local/bin/npm web proxy shim during image build.
-RUN npm_config_update_notifier=false /usr/bin/npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
+RUN set -eu; \
+    RAW_VERSION="${PI_VERSION#v}"; \
+    if [ "${RAW_VERSION}" = "latest" ]; then \
+      RESOLVED_VERSION=$(curl -fsSL https://pi.dev/api/installer/releases/latest | jq -r .version); \
+    else \
+      RESOLVED_VERSION="${RAW_VERSION}"; \
+    fi; \
+    mkdir -p "${USER_HOME}/.npm-global/pi"; \
+    curl -fsSL "https://pi.dev/api/installer/releases/${RESOLVED_VERSION}/package.json" \
+      -o "${USER_HOME}/.npm-global/pi/package.json"; \
+    curl -fsSL "https://pi.dev/api/installer/releases/${RESOLVED_VERSION}/package-lock.json" \
+      -o "${USER_HOME}/.npm-global/pi/package-lock.json"; \
+    cd "${USER_HOME}/.npm-global/pi"; \
+    npm_config_update_notifier=false /usr/bin/npm ci --ignore-scripts --omit=dev --include=optional --no-fund --no-audit --progress=false; \
+    mkdir -p "${USER_HOME}/.npm-global/bin"; \
+    ln -sf "${USER_HOME}/.npm-global/pi/node_modules/.bin/pi" "${USER_HOME}/.npm-global/bin/pi"
 
 # ---------------------------------------------------------------------------
 # bashrc.d/ extensibility seam

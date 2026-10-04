@@ -128,63 +128,80 @@ Below is a highly recommended configuration pattern that:
 
 ## 5. Pi Installation Method & Supply-Chain Hardening
 
-The Pi Coding Agent is installed into the container from the npm registry:
+The Pi Coding Agent is installed into the container image using the official
+release `package-lock.json` and `npm ci`:
 
 ```dockerfile
 # pi/Dockerfile
-RUN npm_config_update_notifier=false /usr/bin/npm install -g \
-    --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}
+RUN set -eu; \
+    RAW_VERSION="${PI_VERSION#v}"; \
+    if [ "${RAW_VERSION}" = "latest" ]; then \
+      RESOLVED_VERSION=$(curl -fsSL https://pi.dev/api/installer/releases/latest | jq -r .version); \
+    else \
+      RESOLVED_VERSION="${RAW_VERSION}"; \
+    fi; \
+    mkdir -p "${USER_HOME}/.npm-global/pi"; \
+    curl -fsSL "https://pi.dev/api/installer/releases/${RESOLVED_VERSION}/package.json" \
+      -o "${USER_HOME}/.npm-global/pi/package.json"; \
+    curl -fsSL "https://pi.dev/api/installer/releases/${RESOLVED_VERSION}/package-lock.json" \
+      -o "${USER_HOME}/.npm-global/pi/package-lock.json"; \
+    cd "${USER_HOME}/.npm-global/pi"; \
+    npm_config_update_notifier=false /usr/bin/npm ci --ignore-scripts --omit=dev --include=optional --no-fund --no-audit --progress=false; \
+    mkdir -p "${USER_HOME}/.npm-global/bin"; \
+    ln -sf "${USER_HOME}/.npm-global/pi/node_modules/.bin/pi" "${USER_HOME}/.npm-global/bin/pi"
 ```
 
-This section explains why this method was chosen, why it is safe, and the one
-action consumers must take to protect themselves from supply-chain attacks.
+This section explains why this method is the chosen one, why it is safe, and the
+recommended action for consumers to lock down their setup against supply-chain attacks.
 
-### Why the npm install method (and not a prebuilt binary)?
+### Why this installation method?
 
-Pi also publishes self-contained release binaries on GitHub. We deliberately do
-**not** use them, for the following reasons:
+Pi provides multiple distribution channels: standalone prebuilt binaries on GitHub,
+a Nix flake, unpinned global npm packages, and the managed installer / lockfile release
+artifacts. We deliberately chose the **managed lockfile + `npm ci`** approach:
 
 - **Node.js is already required in the container.** The image installs Node.js
   independently (via NodeSource) because Pi extensions are installed and run
   through npm (`ddev pi install npm:<package>`) and extension development needs
-  the Node.js toolchain. A prebuilt Pi binary bundles its own Node.js runtime,
-  so it would ship a *second* runtime that duplicates one that must exist
-  anyway — added image weight for no benefit.
-- **The npm package is cross-platform by construction.** The add-on must build
-  on every architecture DDEV runs on (linux/amd64, linux/arm64, and the macOS
-  variants used by Docker). A single npm package works everywhere, whereas
-  prebuilt binaries require per-architecture asset selection, checksum tracking,
-  and failure modes ("wrong binary for arch") inside the Dockerfile.
-- **A binary does not remove the dependency tree.** The agent's dependencies
-  still exist inside a prebuilt binary; they are merely frozen at Pi's build
-  time instead of ours. Switching to a binary trades away flexibility and
-  cross-platform support without actually shrinking the attack surface.
+  the Node.js toolchain. Prebuilt standalone binaries bundle their own redundant
+  Node.js runtime, duplicating a runtime that must exist anyway and adding ~17MB of
+  unnecessary image weight.
+- **Cross-platform without per-architecture asset management.** Standalone binaries
+  require architecture detection (x64, arm64, darwin vs linux) and separate download
+  targets. In contrast, `npm ci` with the official release manifest installs the
+  appropriate native packages automatically across all supported DDEV architectures.
+- **Strict transitive dependency pinning (`npm ci`).** A naive `npm install -g`
+  resolves transitive dependencies dynamically against floating semver ranges,
+  which introduces build-time supply-chain drift. By using the official
+  `package-lock.json` published by upstream for each release, `npm ci` locks every
+  direct and transitive dependency to an exact version and verifies its cryptographic
+  SHA-512 integrity hash.
 
 ### Why the current method is safe
 
+- **100% locked dependency tree with cryptographic verification.** Every package
+  installed during the build is validated by `npm ci` against the official release
+  `package-lock.json`. Any tampered or corrupted tarball is rejected automatically.
 - **Lifecycle scripts are disabled at install time.** The `--ignore-scripts`
-  flag prevents the agent package and any of its dependencies from executing
-  `preinstall`/`install`/`postinstall` hooks during the image build. This
-  neutralizes the most common npm supply-chain attack vector — malicious
-  lifecycle scripts that run automatically on `npm install`.
-- **The install happens at image build time, not at runtime.** Once the image
-  is built, the agent is baked into the immutable image layer. A given image
-  does not re-resolve or re-download the package on every start, so the trusted
-  set of bits is fixed for the lifetime of that image.
-- **npm verifies package integrity on download.** npm validates the registry's
-  content-integrity hash for every fetched tarball before it is unpacked, so a
-  corrupted or tampered download is rejected.
+  flag prevents any package in the dependency tree from executing `preinstall`,
+  `install`, or `postinstall` hooks during the Docker image build. This blocks the
+  primary attack vector used in malicious npm packages.
+- **Build-time baking into an immutable layer.** Pi is installed once during the
+  `docker build` step and baked into the image. At container runtime, no package
+  downloads or dependency resolutions take place.
+- **Fail-fast version resolution.** If an invalid or non-existent version is specified,
+  the manifest download fails immediately with a non-zero exit code, aborting the build
+  before any untrusted assets are executed.
 
 ### REQUIRED: lock `PI_VERSION` to a specific version
 
 > [!IMPORTANT]
-> `PI_VERSION` defaults to `latest`. For any real/shared/CI usage, you MUST
-> pin it to an exact published version. Leaving it at `latest` means a rebuild
-> can silently pull a newer — and potentially compromised — release.
+> `PI_VERSION` defaults to `latest`. For any real, shared, or CI usage, consumers
+> MUST lock it to an exact published version. Leaving it at `latest` allows image
+> rebuilds to automatically adopt new upstream releases without prior review.
 
-The version installed is controlled entirely by the `PI_VERSION` build argument,
-which is wired through `docker-compose.pi.yaml` from the `PI_VERSION`
-environment variable and defaults to `latest`:
+The version installed is controlled by the `PI_VERSION` build argument, which is
+wired through `docker-compose.pi.yaml` from the `PI_VERSION` environment variable:
 
 ```yaml
 # docker-compose.pi.yaml
@@ -192,26 +209,23 @@ args:
   PI_VERSION: ${PI_VERSION:-latest}
 ```
 
-`latest` is a *floating* tag: it resolves to whatever the newest published
-release happens to be at the moment the image is built. This is convenient for
-quick evaluation, but it is **not safe for reproducible or shared setups**:
+When left at `latest`, the build dynamically resolves the newest release from the
+upstream API at build time. While convenient for quick evaluation, this is **not
+recommended for production or team setups**:
 
-- If an attacker ever manages to publish a malicious release to the registry,
-  an unpinned build will pull it automatically on the next rebuild.
-- Two developers (or CI and a laptop) building "the same" project can end up
-  with different agent versions, making compromises hard to detect and
-  incidents hard to reproduce.
+- Two developers (or local dev and CI) rebuilding images at different times could
+  end up running different versions of the agent harness.
+- A newly published upstream release is adopted without review.
 
-**Pin to an exact version** so that every build is reproducible and every
-upgrade is a reviewed, intentional change. Set it per project in
-`.ddev/.env` (or your shell/CI environment):
+**Lock to an exact version** to ensure reproducible, tamper-resistant builds. Set
+it per project in `.ddev/.env` (or in your host/CI environment):
 
 ```bash
 # .ddev/.env  (or exported in your shell / CI)
-PI_VERSION=1.0.0
+PI_VERSION=1.0.2
 ```
 
-Then rebuild the Pi image so the pin takes effect:
+Then rebuild the Pi image so the lock takes effect:
 
 ```bash
 ddev debug rebuild -s pi
