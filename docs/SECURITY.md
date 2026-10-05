@@ -60,35 +60,74 @@ By default, Pi is optimized for an extremely **smooth, fast, and frictionless de
 While this default "autopilot" behavior feels magical, **it compounds the security risks outlined above**. A silent prompt injection can read your `.env` credentials, modify `.git/config`, or write a DDEV hook without you ever seeing a prompt or warning.
 
 ### Securing the Sandbox vs. "Smooth Experience"
-Applying a policy engine like `pi-guard` closes these security loopholes by inserting user approval prompts (`"ask"`) for dangerous directories and files:
+Applying a tool-level policy or permission engine closes these security loopholes by inserting user approval prompts (`"ask"`) or explicit denials (`"deny"`) for dangerous directories and files:
 - **The Benefit:** It prevents silent host escapes and credential leaks. You remain in control of what enters `.git`, `.ddev`, or sensitive files.
 - **The Tradeoff:** It impacts the "hands-off" developer experience. The agent will pause and prompt you whenever it needs to inspect `.ddev/config.yaml` or write workspace configurations, requiring you to actively review and confirm the action.
 
-Every developer must decide their own risk tolerance and choose whether to prioritize **frictionless speed (default)** or **hardened security (with `pi-guard`)**.
+Every developer must decide their own risk tolerance and choose whether to prioritize **frictionless speed (default)** or **hardened security (using a policy or permission extension)**.
 
 ## 4. Sandboxing & Hardening Recommendations
 
-To eliminate these risks, you must implement **defense-in-depth** restrictions. We highly recommend hardening your configuration using `pi-guard` or a similar tool-level policy engine.
+To eliminate these risks, you must implement **defense-in-depth** restrictions. You can install an in-process policy or permission extension to restrict tool executions, filesystem access, and shell commands.
 
-### Recommend: Installing [`pi-guard`](https://pi.dev/packages/pi-guard)
+A recommended baseline policy across any engine is to:
+- **`deny`** direct access to the `.git` directory (blocking hook and configuration tampering).
+- **`deny`** access to credential files (`*.env`, `*.pem`, `*.key`).
+- **`ask`** for user confirmation before reading, writing, or editing files in `.ddev`.
 
-[`pi-guard`](https://pi.dev/packages/pi-guard) is a general-purpose permission and policy engine for Pi. It intercepts tool calls (reads, writes, edits, and shell commands) and validates them against a user-defined whitelist/blacklist.
+Below are minimal configuration examples for two common community extensions.
 
-#### 1. Install `pi-guard` globally:
+### `@gotgenes/pi-permission-system`
+
+```bash
+ddev pi install npm:@gotgenes/pi-permission-system
+```
+
+Configured in `~/.pi/agent/extensions/pi-permission-system/config.json` (evaluated last-match-wins):
+
+```json
+{
+  "read": {
+    "*": "allow",
+    "**/.git": "deny",
+    "**/.git/**": "deny",
+    "**/.ddev": "ask",
+    "**/.ddev/**": "ask",
+    "**/*.env": "deny",
+    "**/*.env.*": "deny",
+    "**/*.pem": "deny",
+    "**/*.key": "deny"
+  },
+  "write": {
+    "*": "ask",
+    "**/.git": "deny",
+    "**/.git/**": "deny",
+    "**/.ddev": "ask",
+    "**/.ddev/**": "ask"
+  },
+  "edit": {
+    "*": "ask",
+    "**/.git": "deny",
+    "**/.git/**": "deny",
+    "**/.ddev": "ask",
+    "**/.ddev/**": "ask"
+  },
+  "bash": {
+    "*": "ask",
+    "git status*": "allow",
+    "git diff*": "allow",
+    "git log*": "allow"
+  }
+}
+```
+
+### `pi-guard`
+
 ```bash
 ddev pi install npm:pi-guard
 ```
 
-#### 2. Configure Whitelists & Blacklists
-Modify your user-level configuration file (`~/.pi/agent/settings.json`) to explicitly block direct reading and writing to sensitive directories, and to require confirmation for workspace configuration files.
-
-> [!NOTE]
-> Inside the DDEV Pi container, the home directory `/home/pi` has a persistent named volume. You can edit `~/.pi/agent/settings.json` directly from within the Pi container (via `ddev ssh -s pi` or using the `/settings` command inside the Pi agent).
-
-Below is a highly recommended configuration pattern that:
-- **`deny`s** all direct access to the `.git` folder (blocking hook and config tampering).
-- **`ask`s** for explicit user confirmation before reading, writing, or editing files in the `.ddev` folder.
-- **`deny`s** access to `.env` and `.pem` credentials.
+Configured under the `"guard"` block in `~/.pi/agent/settings.json`:
 
 ```json
 {
@@ -123,8 +162,11 @@ Below is a highly recommended configuration pattern that:
 }
 ```
 
+> [!NOTE]
+> Inside the DDEV Pi container, the home directory `/home/pi` has a persistent named volume. You can edit configuration files (`~/.pi/agent/settings.json` or `~/.pi/agent/extensions/pi-permission-system/config.json`) directly from within the Pi container (via `ddev ssh -s pi` or using the `/settings` command inside the Pi agent).
+
 > [!WARNING]
-> This list of blocked patterns is **not complete**. There are other files (such as package managers' configuration files like `package.json` scripts, `composer.json` scripts, or CI/CD pipelines) that can also execute commands when triggered on the host. Security is an ongoing review process.
+> These lists of blocked patterns are **not complete**. There are other files (such as package managers' configuration files like `package.json` scripts, `composer.json` scripts, or CI/CD pipelines) that can also execute commands when triggered on the host. Security is an ongoing review process.
 
 ## 5. Pi Installation Method & Supply-Chain Hardening
 
@@ -242,4 +284,4 @@ ddev restart && ddev start --profiles=pi
 ## 6. Best Practices for Secure Workflows
 
 - **Always Review Diffs:** Before running `ddev start`, `git commit`, `composer install`, or `npm install` after an agent session, run `git diff` to inspect what files were modified.
-- **Avoid Global Shell Whitelists:** Do not add generic scripting engines (such as `python`, `node`, `bash`, or write-enabling tools like `sed` and `awk`) to `pi-guard`'s `bash` whitelist, as they can bypass path-level restrictions.
+- **Avoid Global Shell Whitelists:** Do not add generic scripting engines (such as `python`, `node`, `bash`, or write-enabling tools like `sed` and `awk`) to shell command whitelists or allow-lists without restrictions, as they can bypass path-level restrictions.
