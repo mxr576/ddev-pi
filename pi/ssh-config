@@ -9,3 +9,6 @@ Host web
     RequestTTY no
     # Suppress "Permanently added" warning for agent SSH connections
     LogLevel ERROR
+    ControlMaster auto
+    ControlPath /tmp/ssh-%r@%h:%p
+    ControlPersist 10m

@@ -378,6 +378,57 @@ EOF
   assert_success
 }
 
+@test "web toolchain proxies: multiplexed SSH connection is established and handles concurrent calls" {
+  set -eu -o pipefail
+  echo "# Testing tool proxy SSH multiplexing and concurrency with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # 1. Before running any tool, verify 0 persistent SSH connections exist to port 22 (:0016).
+  run ddev exec --service pi bash -c "grep -c ':0016 01 ' /proc/net/tcp || true"
+  assert_output "0"
+
+  # 2. Invoke a proxied tool (php) to establish initial connection and trigger control master.
+  run ddev exec --service pi php -v
+  assert_success
+  assert_output --partial "PHP"
+
+  # 3. Behavioral proof: verify that exactly 1 persistent TCP connection to port 22 (:0016)
+  # is maintained in ESTABLISHED state (01) by ControlPersist.
+  # If ControlMaster/ControlPersist is disabled, the connection closes immediately and this outputs "0".
+  run ddev exec --service pi bash -c "grep -c ':0016 01 ' /proc/net/tcp || true"
+  assert_output "1"
+
+  # 4. Verify that the SSH control socket was created in /tmp and the master daemon responds.
+  run ddev exec --service pi bash -c "find /tmp -maxdepth 1 -name 'ssh-*' -type s | grep -q 'ssh-'"
+  assert_success
+  run ddev exec --service pi ssh -O check web
+  assert_success
+
+  # 5. Verify that concurrent tool proxy invocations complete successfully over
+  # the multiplexed connection without connection resets or socket contention.
+  run ddev exec --service pi bash << 'EOF'
+    set -eu
+    for i in $(seq 1 8); do
+      php -r "echo \"concurrent-$i\n\";" &
+    done
+    wait
+EOF
+  assert_success
+  for i in $(seq 1 8); do
+    assert_output --partial "concurrent-$i"
+  done
+
+  # 6. Verify that even after running concurrent proxy calls, all traffic was multiplexed
+  # through that single persistent TCP connection (still exactly 1).
+  run ddev exec --service pi bash -c "grep -c ':0016 01 ' /proc/net/tcp || true"
+  assert_output "1"
+}
+
 @test "make: executes targets calling proxied web tools" {
   set -eu -o pipefail
   echo "# Testing make calling proxied web tools with project ${PROJNAME} in $(pwd)" >&3
