@@ -30,17 +30,26 @@ LOG_FILE="${DDEV_APPROOT}/.ddev/pi/clipboard.log"
 # Clean up any previous pending file
 rm -f "$PENDING_FILE"
 
-# Start the clipboard helper in the background if python3 is available
+# Start the clipboard helper in the background if python3 is available.
+# Otherwise, fall back to terminal OSC 52 clipboard sync.
 HELPER_PID=""
+EXEC_ENV=()
 if command -v python3 >/dev/null 2>&1; then
   if [ -f "$HELPER_SCRIPT" ]; then
     python3 "$HELPER_SCRIPT" "$PENDING_FILE" > "$LOG_FILE" 2>&1 &
     HELPER_PID=$!
   else
-    echo "Warning: Clipboard helper script not found at '$HELPER_SCRIPT'. Clipboard sync is disabled." >&2
+    echo "Warning: Clipboard helper script not found at '$HELPER_SCRIPT'. Falling back to terminal OSC 52 clipboard sync (requires an OSC 52-compatible terminal)." >&2
+    EXEC_ENV=(env "PI_CLIPBOARD_OSC52=1")
   fi
 else
-  echo "Warning: 'python3' was not found on your host system. Clipboard sync between the Pi container and your host is disabled." >&2
+  echo "Warning: 'python3' was not found on your host system. Falling back to terminal OSC 52 clipboard sync (requires an OSC 52-compatible terminal)." >&2
+  EXEC_ENV=(env "PI_CLIPBOARD_OSC52=1")
+fi
+
+# Allow host environment override if PI_CLIPBOARD_OSC52 is explicitly set
+if [ -n "${PI_CLIPBOARD_OSC52:-}" ]; then
+  EXEC_ENV=(env "PI_CLIPBOARD_OSC52=${PI_CLIPBOARD_OSC52}")
 fi
 
 # Save current terminal state and disable Ctrl+Z suspension signal on host
@@ -63,4 +72,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Run the containerized Pi Coding Agent
-ddev exec --service=pi pi "$@"
+if [ ${#EXEC_ENV[@]} -gt 0 ]; then
+  ddev exec --service=pi "${EXEC_ENV[@]}" pi "$@"
+else
+  ddev exec --service=pi pi "$@"
+fi

@@ -315,6 +315,11 @@ EOF
   run ddev restart && ddev start --profiles=pi
   assert_success
 
+  # Verify PI_CLIPBOARD_OSC52 defaults to 0 in the container
+  run ddev exec --service pi bash -c 'echo "${PI_CLIPBOARD_OSC52:-}"'
+  assert_success
+  assert_output "0"
+
   # 1. Test Container-side Interceptor
   # xclip, xsel, wl-copy should write to the shared volume file bridge.
   run ddev exec --service pi bash -c "echo 'interceptor-test-content' | xclip"
@@ -346,6 +351,32 @@ EOF
   # Verify in logs that the helper started and attempted copying.
   run cat "${TESTDIR}/.ddev/clipboard-test.log"
   assert_output --partial "Starting clipboard helper"
+}
+
+@test "clipboard: host command falls back to OSC 52 when python3 is unavailable" {
+  set -eu -o pipefail
+  echo "# Testing clipboard host command fallback with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  FAKE_BIN="$(mktemp -d "${HOME}/tmp/fakebin.XXXXXX")"
+  ln -s "$(command -v bash)" "${FAKE_BIN}/bash"
+  ln -s "$(command -v dirname)" "${FAKE_BIN}/dirname"
+  ln -s "$(command -v rm)" "${FAKE_BIN}/rm"
+
+  cat <<'EOF' > "${FAKE_BIN}/ddev"
+#!/usr/bin/env bash
+echo "MOCK_DDEV_ARGS: $@"
+exit 0
+EOF
+  chmod +x "${FAKE_BIN}/ddev"
+
+  run env -i HOME="${HOME}" DDEV_APPROOT="${TESTDIR}" PATH="${FAKE_BIN}" bash "${TESTDIR}/.ddev/commands/host/pi" --version
+  rm -rf "${FAKE_BIN}"
+
+  assert_output --partial "Falling back to terminal OSC 52 clipboard sync"
+  assert_output --partial "PI_CLIPBOARD_OSC52=1"
 }
 
 @test "web toolchain proxies: transparently forward commands to web container" {

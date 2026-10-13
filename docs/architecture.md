@@ -93,13 +93,23 @@ external LLM provider API directly) can override this default by setting
 
 ## Clipboard integration
 
-To allow the containerized Pi Coding Agent to interact with the host system's clipboard without breaching container boundaries, opening ports, or exposing host networks, the add-on implements a **Shared Volume File Bridge**.
+To allow the containerized Pi Coding Agent to interact with the host system's clipboard without breaching container boundaries, opening ports, or exposing host networks, the add-on implements a **Hybrid Clipboard Architecture**:
 
-### How it works:
+### 1. Shared Volume File Bridge (Primary)
+When `python3` is available on the host:
 1. **Container Interceptors:** Standard Linux clipboard utilities (`xclip`, `xsel`, `wl-copy`) are replaced with a mock wrapper script inside the container's `/usr/local/bin/`.
 2. **Display Emulation:** The container runs with the `DISPLAY: ":0"` environment variable defined. This satisfies the Pi Coding Agent's platform detection logic, forcing it to invoke the Linux clipboard tools instead of falling back to OSC 52.
 3. **Pending File Bridge:** When the agent triggers a clipboard write (such as via the `/copy` command), the mock utility captures the standard input and writes the payload atomically to the shared project volume at `/var/www/html/.ddev/pi/.clipboard_pending`.
 4. **Host Clipboard Daemon:** On the host, the custom `ddev pi` wrapper starts a lightweight background Python daemon (`pi/clipboard-helper.py`) that monitors the project directory. When it detects `.clipboard_pending` under `.ddev/pi/`, it reads the contents, copies them to the host's system clipboard using native host OS utilities (like `pbcopy`, `clip.exe`, or `wl-copy`/`xclip`), and then deletes the pending file.
+
+This primary bridge ensures universal terminal compatibility (including macOS Terminal.app and standard Linux VTE terminals) and supports arbitrary payload sizes without buffer limits.
+
+### 2. Terminal OSC 52 Fallback (Zero Host Dependencies)
+When `python3` is not found on the host machine:
+1. The host daemon is skipped, and `commands/host/pi` automatically passes `PI_CLIPBOARD_OSC52=1` to the container process.
+2. In Pi v1.2.0+, `PI_CLIPBOARD_OSC52=1` instructs Pi to emit ANSI OSC 52 escape sequences directly over `stdout` (`\x1b]52;c;<base64>\x07`).
+3. Modern terminal emulators (Ghostty, iTerm2, Windows Terminal, Kitty, WezTerm, Alacritty) intercept this sequence and write the payload directly to the host OS clipboard without requiring any host runtime or helper process.
+4. Keeping OSC 52 disabled (`0`) while the Python helper is running prevents dual-write duplication in host clipboard history tools. Users can override this explicitly by setting `PI_CLIPBOARD_OSC52=1` or `0`.
 
 This design is fully secure, bypasses host firewalls, opens no ports, and works cross-platform across macOS, Windows/WSL, and Linux.
 
