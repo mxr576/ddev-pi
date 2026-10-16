@@ -18,14 +18,8 @@ export default function (pi: ExtensionAPI) {
       "\n\n### Web Container Tool Execution Rules\n" +
       `The following tools automatically execute in the DDEV web container: ${toolList}.\n` +
       "All required environment variables (SIMPLETEST_DB, SIMPLETEST_BASE_URL, MINK_DRIVER_ARGS_WEBDRIVER, etc.)\n" +
-      "are available automatically. The working directory is `/var/www/html`, so no `cd` is needed.\n" +
-      "**ALWAYS** call tools directly, e.g. `phpunit`, `composer install`, `php -r ...`\n\n" +
-      "PHPUnit specifics:\n" +
-      "- Unless instructed otherwise, invoke as: `phpunit -c web/core <further args>`\n" +
-      "- Do NOT pass env vars manually — they are provided automatically by the container.\n" +
-      "- If run without arguments and exits with code 1, treat as SUCCESS when the first output line starts with\n" +
-      "  \"PHPUnit [Version] by Sebastian Bergmann\". State it succeeded; do not apologize or attempt fixes.\n" +
-      "- Any other non-zero exit code is a real failure.";
+      "and working directory are preserved automatically.\n" +
+      "Run tools directly without prefixing with `ssh web` or `ddev exec`.";
 
     return { systemPrompt: event.systemPrompt + instruction };
   });
