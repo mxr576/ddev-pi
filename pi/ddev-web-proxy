@@ -39,6 +39,82 @@ for arg in "$@"; do
   cmd="${cmd} $(printf "%q" "$arg")"
 done
 
+# Resolve project approot to locate configuration files.
+approot="${DDEV_APPROOT:-/var/www/html}"
+if [ ! -d "$approot/.ddev" ]; then
+  dir="$PWD"
+  while [ "$dir" != "/" ] && [ -n "$dir" ]; do
+    if [ -d "$dir/.ddev" ]; then
+      approot="$dir"
+      break
+    fi
+    dir="$(dirname "$dir")"
+  done
+fi
+
+# Load custom variable patterns from project config files if present (.ddev/pi/web-proxy-env or .ddev/web-proxy-env).
+custom_patterns=()
+for cfg in "${approot}/.ddev/pi/web-proxy-env" "${approot}/.ddev/web-proxy-env"; do
+  if [ -f "$cfg" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      if [[ -n "$line" && ! "$line" =~ ^# ]]; then
+        custom_patterns+=("$line")
+      fi
+    done < "$cfg"
+  fi
+done
+
+# Also allow ad-hoc additions via DDEV_WEB_PROXY_FORWARD_ENV (comma- or space-separated).
+if [ -n "${DDEV_WEB_PROXY_FORWARD_ENV:-}" ]; then
+  for item in ${DDEV_WEB_PROXY_FORWARD_ENV//,/ }; do
+    custom_patterns+=("$item")
+  done
+fi
+
+# Capture and forward caller environment variables matching test/runtime prefixes or custom patterns.
+forwarded_env=""
+while IFS= read -r -d '' entry; do
+  if [[ "$entry" == *"="* ]]; then
+    var_name="${entry%%=*}"
+    var_val="${entry#*=}"
+
+    # Never forward system or container-specific variables.
+    case "$var_name" in
+      HOME|USER|UID|GID|PATH|SHELL|TERM|PWD|OLDPWD|SHLVL|_|SSH_*|PI_*|DDEV_*)
+        continue
+        ;;
+    esac
+
+    # Validate that variable name is a legal POSIX shell identifier.
+    if [[ ! "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+      continue
+    fi
+
+    matched=false
+    case "$var_name" in
+      BROWSERTEST_*|SIMPLETEST_*|MINK_*|XDEBUG_*|PHP_*|DRUPAL_*|DRUSH_*|NODE_*|COMPOSER_*|SYMFONY_*|PARATEST_*|PEST_*|BEHAT_*|CI)
+        matched=true
+        ;;
+    esac
+
+    if [ "$matched" = false ] && [ ${#custom_patterns[@]} -gt 0 ]; then
+      for pattern in "${custom_patterns[@]}"; do
+        if [[ "$var_name" == $pattern ]]; then
+          matched=true
+          break
+        fi
+      done
+    fi
+
+    if [ "$matched" = true ]; then
+      forwarded_env="${forwarded_env}export $(printf "%s=%q" "$var_name" "$var_val"); "
+    fi
+  fi
+done < <(env -0)
+
 # Allocate pseudo-terminal if connected to an interactive TTY.
 ssh_opts=()
 if [ -t 0 ] && [ -t 1 ]; then
@@ -49,6 +125,7 @@ escaped_pwd=$(printf "%q" "$PWD")
 
 # Execute inside the web container:
 # 1. Export environment variables from /proc/1/environ so non-login shells inherit Docker web_environment.
-# 2. Match the current working directory if it exists inside the web container, otherwise fallback to /var/www/html.
-# 3. Run the command with exit status preserved.
-exec ssh "${ssh_opts[@]}" web "export \$(cat /proc/1/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '^[a-zA-Z_][a-zA-Z0-9_]*=' | xargs -d '\\n') 2>/dev/null; cd $escaped_pwd 2>/dev/null || cd /var/www/html; $cmd"
+# 2. Export forwarded caller environment variables, overriding container defaults.
+# 3. Match the current working directory if it exists inside the web container, otherwise fallback to /var/www/html.
+# 4. Run the command with exit status preserved.
+exec ssh "${ssh_opts[@]}" web "export \$(cat /proc/1/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '^[a-zA-Z_][a-zA-Z0-9_]*=' | xargs -d '\\n') 2>/dev/null; ${forwarded_env}cd $escaped_pwd 2>/dev/null || cd /var/www/html; $cmd"

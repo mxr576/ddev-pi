@@ -409,6 +409,63 @@ EOF
   assert_success
 }
 
+@test "web toolchain proxies: forward caller environment variables across SSH" {
+  set -eu -o pipefail
+  echo "# Testing caller environment variable forwarding in tool proxies with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # Verify empty string override takes effect and overrides container defaults
+  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="" php -r '\''var_dump(getenv("BROWSERTEST_OUTPUT_DIRECTORY"));'\'''
+  assert_success
+  assert_output 'string(0) ""'
+
+  # Verify custom value override takes effect
+  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="/custom/path" php -r '\''echo getenv("BROWSERTEST_OUTPUT_DIRECTORY");'\'''
+  assert_success
+  assert_output '/custom/path'
+
+  # Verify standard test and runtime prefixes
+  run ddev exec --service pi bash << 'EOF'
+    XDEBUG_MODE=coverage \
+    SIMPLETEST_BASE_URL="http://example.com" \
+    MINK_DRIVER_ARGS_WEBDRIVER='["chrome"]' \
+    PHP_CUSTOM_VAR="custom_val" \
+    php -r 'echo getenv("XDEBUG_MODE") . "|" . getenv("SIMPLETEST_BASE_URL") . "|" . getenv("MINK_DRIVER_ARGS_WEBDRIVER") . "|" . getenv("PHP_CUSTOM_VAR");'
+EOF
+  assert_success
+  assert_output 'coverage|http://example.com|["chrome"]|custom_val'
+
+  # Verify DDEV_WEB_PROXY_FORWARD_ENV passes custom non-prefixed variables
+  run ddev exec --service pi bash << 'EOF'
+    DDEV_WEB_PROXY_FORWARD_ENV="CUSTOM_VAR" \
+    CUSTOM_VAR="explicit_passthrough" \
+    php -r 'echo getenv("CUSTOM_VAR");'
+EOF
+  assert_success
+  assert_output 'explicit_passthrough'
+
+  # Verify project-level .ddev/pi/web-proxy-env configuration file
+  cat << 'EOF' > "${TESTDIR}/.ddev/pi/web-proxy-env"
+# Custom test patterns
+PROJECT_TEST_*
+EXACT_CUSTOM_TOKEN
+EOF
+
+  run ddev exec --service pi bash << 'EOF'
+    PROJECT_TEST_KEY="pattern_matched" \
+    EXACT_CUSTOM_TOKEN="token_matched" \
+    UNMATCHED_CUSTOM_VAR="ignored" \
+    php -r 'echo getenv("PROJECT_TEST_KEY") . "|" . getenv("EXACT_CUSTOM_TOKEN") . "|" . (getenv("UNMATCHED_CUSTOM_VAR") ?: "not_set");'
+EOF
+  assert_success
+  assert_output 'pattern_matched|token_matched|not_set'
+}
+
 @test "web toolchain proxies: multiplexed SSH connection is established and handles concurrent calls" {
   set -eu -o pipefail
   echo "# Testing tool proxy SSH multiplexing and concurrency with project ${PROJNAME} in $(pwd)" >&3

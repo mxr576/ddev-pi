@@ -115,6 +115,36 @@ Because `/usr/local/bin` takes precedence over `/usr/bin` in `$PATH`:
 - **Running plain `npm` or `yarn` executes inside the `web` container** under the `ddev` user.
 - Any attempt to access or create `/home/pi` paths via plain `npm` in the `web` container will fail with `EACCES: permission denied, mkdir '/home/pi'`.
 
+### Environment variable forwarding
+
+When invoking proxied tools with environment variable prefixes (such as `BROWSERTEST_OUTPUT_DIRECTORY="" phpunit ...` or `XDEBUG_MODE=off php ...`), `ddev-web-proxy` captures caller environment variables and exports them across the SSH bridge after web container `/proc/1/environ` defaults. This ensures CLI overrides take precedence over container defaults while safely preserving empty strings.
+
+Supported variable prefixes:
+- Test frameworks: `BROWSERTEST_*`, `SIMPLETEST_*`, `MINK_*`, `PARATEST_*`, `PEST_*`, `BEHAT_*`, `CI`
+- Runtimes & tooling: `XDEBUG_*`, `PHP_*`, `DRUPAL_*`, `NODE_*`, `COMPOSER_*`, `SYMFONY_*`
+
+#### Project-level configuration file (`.ddev/pi/web-proxy-env`)
+
+To persistently forward project-specific environment variables without manual CLI prefixing, create `.ddev/pi/web-proxy-env` (or `.ddev/web-proxy-env`) in your repository. The file accepts newline-delimited exact variable names or glob patterns; comments (`#`) and empty lines are ignored:
+
+```text
+# .ddev/pi/web-proxy-env
+APP_*
+STRIPE_*
+AWS_ENDPOINT_URL
+MY_CUSTOM_TEST_*
+```
+
+#### Ad-hoc custom variables (`DDEV_WEB_PROXY_FORWARD_ENV`)
+
+You can also forward custom variables ad-hoc via comma- or space-separated names or globs:
+
+```bash
+DDEV_WEB_PROXY_FORWARD_ENV="APP_*,STRIPE_KEY" APP_ENV=test STRIPE_KEY=xyz phpunit
+```
+
+System and container-internal variables (`HOME`, `PATH`, `USER`, `SHELL`, `PWD`, `TERM`, `SSH_*`, `PI_*`, `DDEV_*`) are always protected and will never be forwarded regardless of wildcard patterns.
+
 ### What to use instead
 
 1. **Installing Pi extensions / skills:**
