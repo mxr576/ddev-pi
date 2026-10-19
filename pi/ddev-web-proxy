@@ -22,7 +22,7 @@ fi
 
 # Rewrite vendor/bin tools to canonical vendor/bin/<tool> if present in the project.
 case "$tool" in
-  drush|phpunit|phpstan|phpcs|phpcbf)
+  drush|phpunit|phpstan|phpcs|phpcbf|behat)
     if [ -f "vendor/bin/$tool" ]; then
       cmd="vendor/bin/$tool"
     else

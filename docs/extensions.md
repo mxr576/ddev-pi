@@ -107,7 +107,7 @@ myaddon-review.ts
 
 ## Web Container Toolchain Proxies (`npm`, `yarn`, `php`, etc.)
 
-To allow the Pi agent to build, test, and interact with your web application, standard CLI development tools (`php`, `composer`, `drush`, `phpunit`, `phpstan`, `phpcs`, `phpcbf`, `yarn`, and `npm`) in the Pi container are configured as proxy shims in `/usr/local/bin/`. These shims forward invocations over a secure SSH bridge to execute directly inside the DDEV `web` container.
+To allow the Pi agent to build, test, and interact with your web application, standard CLI development tools (`php`, `composer`, `drush`, `phpunit`, `phpstan`, `phpcs`, `phpcbf`, `behat`, `yarn`, and `npm`) in the Pi container are configured as proxy shims in `/usr/local/bin/`. These shims forward invocations over a secure SSH bridge to execute directly inside the DDEV `web` container.
 
 ### Important for addon authors
 

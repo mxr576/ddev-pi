@@ -390,8 +390,22 @@ EOF
   assert_success
 
   # Verify shims are installed and executable on $PATH
-  run ddev exec --service pi which php composer drush phpunit yarn npm
+  run ddev exec --service pi which php composer drush phpunit behat yarn npm
   assert_success
+
+  # Verify vendor/bin tool rewriting and execution via shim
+  mkdir -p "${TESTDIR}/vendor/bin"
+  cat << 'EOF' > "${TESTDIR}/vendor/bin/behat"
+#!/usr/bin/env bash
+echo "behat-mock-executed: $@"
+EOF
+  chmod +x "${TESTDIR}/vendor/bin/behat"
+
+  run ddev exec --service pi behat --version
+  assert_success
+  assert_output --partial "behat-mock-executed: --version"
+
+  rm -rf "${TESTDIR}/vendor/bin"
 
   # Verify direct invocation works and reaches web container
   run ddev exec --service pi php -v
@@ -434,11 +448,12 @@ EOF
     XDEBUG_MODE=coverage \
     SIMPLETEST_BASE_URL="http://example.com" \
     MINK_DRIVER_ARGS_WEBDRIVER='["chrome"]' \
+    BEHAT_PARAMS='{"extensions":{}}' \
     PHP_CUSTOM_VAR="custom_val" \
-    php -r 'echo getenv("XDEBUG_MODE") . "|" . getenv("SIMPLETEST_BASE_URL") . "|" . getenv("MINK_DRIVER_ARGS_WEBDRIVER") . "|" . getenv("PHP_CUSTOM_VAR");'
+    php -r 'echo getenv("XDEBUG_MODE") . "|" . getenv("SIMPLETEST_BASE_URL") . "|" . getenv("MINK_DRIVER_ARGS_WEBDRIVER") . "|" . getenv("BEHAT_PARAMS") . "|" . getenv("PHP_CUSTOM_VAR");'
 EOF
   assert_success
-  assert_output 'coverage|http://example.com|["chrome"]|custom_val'
+  assert_output 'coverage|http://example.com|["chrome"]|{"extensions":{}}|custom_val'
 
   # Verify DDEV_WEB_PROXY_FORWARD_ENV passes custom non-prefixed variables
   run ddev exec --service pi bash << 'EOF'

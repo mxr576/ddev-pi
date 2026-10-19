@@ -91,7 +91,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Copy and configure web container tool forwarding proxy
 COPY ddev-web-proxy /usr/local/bin/ddev-web-proxy
 RUN chmod +x /usr/local/bin/ddev-web-proxy \
-    && for tool in php composer drush phpunit phpstan phpcs phpcbf yarn npm; do \
+    && for tool in php composer drush phpunit phpstan phpcs phpcbf behat yarn npm; do \
          ln -sf /usr/local/bin/ddev-web-proxy /usr/local/bin/${tool}; \
        done
 
