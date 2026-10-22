@@ -5,9 +5,12 @@ import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 // Tools forwarded to the DDEV web container via /usr/local/bin system shims.
 const WEB_TOOLS = ["php", "composer", "drush", "phpunit", "phpstan", "phpcs", "phpcbf", "behat", "yarn", "npm"] as const;
 
+// Optional leading `VAR=val` assignments before the tool invocation.
+const ENV_PREFIX = `(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\\S*)\\s+)*`;
+
 // Pattern matching any web tool invocation, bare or prefixed with (./)vendor/bin/
 const WEB_TOOL_PATTERN = new RegExp(
-  `^(?:\\./)?(?:vendor/bin/)?(${WEB_TOOLS.join("|")})\\b`
+  `^(${ENV_PREFIX})(?:\\./)?(?:vendor/bin/)?(${WEB_TOOLS.join("|")})\\b`
 );
 
 export default function (pi: ExtensionAPI) {
@@ -33,14 +36,15 @@ export default function (pi: ExtensionAPI) {
     const match = originalCmd.match(WEB_TOOL_PATTERN);
     if (!match) return;
 
-    const toolName = match[1];
+    const envPrefix = match[1];
+    const toolName = match[2];
 
     // Normalize any prefixed invocation (e.g., `vendor/bin/phpunit`, `./drush`)
     // to the bare tool name so it resolves directly to the /usr/local/bin shim.
-    if (!originalCmd.startsWith(toolName)) {
+    if (!originalCmd.startsWith(`${envPrefix}${toolName}`)) {
       event.input.command = originalCmd.replace(
-        new RegExp(`^(?:\\./)?(?:vendor/bin/)?${toolName}`),
-        toolName
+        new RegExp(`^(${ENV_PREFIX})(?:\\./)?(?:vendor/bin/)?${toolName}`),
+        `$1${toolName}`
       );
     }
 

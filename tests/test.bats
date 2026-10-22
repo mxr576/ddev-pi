@@ -455,30 +455,16 @@ EOF
   assert_success
   assert_output 'coverage|http://example.com|["chrome"]|{"extensions":{}}|custom_val'
 
-  # Verify DDEV_WEB_PROXY_FORWARD_ENV passes custom non-prefixed variables
+  # Verify arbitrary custom caller variables are forwarded automatically while internal variables remain blocked
   run ddev exec --service pi bash << 'EOF'
-    DDEV_WEB_PROXY_FORWARD_ENV="CUSTOM_VAR" \
-    CUSTOM_VAR="explicit_passthrough" \
-    php -r 'echo getenv("CUSTOM_VAR");'
+    CUSTOM_VAR="arbitrary_passthrough" \
+    PROJECT_TEST_KEY="exported_val" \
+    PI_INTERNAL_SECRET="must_not_leak" \
+    NPM_CONFIG_PREFIX="/home/pi/.npm-global" \
+    php -r 'echo getenv("CUSTOM_VAR") . "|" . getenv("PROJECT_TEST_KEY") . "|" . (getenv("PI_INTERNAL_SECRET") ?: "blocked") . "|" . (getenv("NPM_CONFIG_PREFIX") ?: "blocked");'
 EOF
   assert_success
-  assert_output 'explicit_passthrough'
-
-  # Verify project-level .ddev/pi/web-proxy-env configuration file
-  cat << 'EOF' > "${TESTDIR}/.ddev/pi/web-proxy-env"
-# Custom test patterns
-PROJECT_TEST_*
-EXACT_CUSTOM_TOKEN
-EOF
-
-  run ddev exec --service pi bash << 'EOF'
-    PROJECT_TEST_KEY="pattern_matched" \
-    EXACT_CUSTOM_TOKEN="token_matched" \
-    UNMATCHED_CUSTOM_VAR="ignored" \
-    php -r 'echo getenv("PROJECT_TEST_KEY") . "|" . getenv("EXACT_CUSTOM_TOKEN") . "|" . (getenv("UNMATCHED_CUSTOM_VAR") ?: "not_set");'
-EOF
-  assert_success
-  assert_output 'pattern_matched|token_matched|not_set'
+  assert_output 'arbitrary_passthrough|exported_val|blocked|blocked'
 }
 
 @test "web toolchain proxies: multiplexed SSH connection is established and handles concurrent calls" {
