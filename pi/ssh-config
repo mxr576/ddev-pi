@@ -12,3 +12,5 @@ Host web
     ControlMaster auto
     ControlPath /tmp/ssh-%r@%h:%p
     ControlPersist 10m
+    ConnectTimeout 5
+    ConnectionAttempts 10

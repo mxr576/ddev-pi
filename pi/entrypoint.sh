@@ -74,6 +74,14 @@ if ! sed -n '/^Host web$/,/^Host /p' "${HOME}/.ssh/config" 2>/dev/null | grep -q
   sed -i "/^Host web$/a\\    User $WEB_USER" "${HOME}/.ssh/config" 2>/dev/null
 fi
 
+# Wait for web SSH service to accept connections (max 15s)
+for i in $(seq 1 15); do
+  if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/web/22' 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
 # ---------------------------------------------------------------------------
 # entrypoint.d/ hooks
 # Scripts placed in ${HOME}/.entrypoint.d are executed in lexicographic order.

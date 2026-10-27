@@ -79,7 +79,7 @@ while IFS= read -r -d '' entry; do
 done < <(env -0)
 
 # Allocate pseudo-terminal if connected to an interactive TTY.
-ssh_opts=()
+ssh_opts=("-o" "ConnectTimeout=5" "-o" "ConnectionAttempts=10")
 if [ -t 0 ] && [ -t 1 ]; then
   ssh_opts+=("-t")
 fi
