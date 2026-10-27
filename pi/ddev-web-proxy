@@ -91,4 +91,4 @@ escaped_pwd=$(printf "%q" "$PWD")
 # 2. Export forwarded caller environment variables, overriding container defaults.
 # 3. Match the current working directory if it exists inside the web container, otherwise fallback to /var/www/html.
 # 4. Run the command with exit status preserved.
-exec ssh "${ssh_opts[@]}" web "export \$(cat /proc/1/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '^[a-zA-Z_][a-zA-Z0-9_]*=' | xargs -d '\\n') 2>/dev/null; ${forwarded_env}cd $escaped_pwd 2>/dev/null || cd /var/www/html; $cmd"
+exec ssh "${ssh_opts[@]}" web "if [ -r /proc/1/environ ]; then while IFS= read -r -d '' entry || [ -n \"\$entry\" ]; do if [[ \"\$entry\" =~ ^[a-zA-Z_][a-zA-Z0-9_]*= ]]; then export \"\$entry\" 2>/dev/null || true; fi; done < /proc/1/environ; fi; ${forwarded_env}cd $escaped_pwd 2>/dev/null || cd /var/www/html; $cmd"

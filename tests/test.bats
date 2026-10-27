@@ -427,11 +427,20 @@ EOF
   set -eu -o pipefail
   echo "# Testing caller environment variable forwarding in tool proxies with project ${PROJNAME} in $(pwd)" >&3
 
+  cat << 'EOF' > "${TESTDIR}/.ddev/.env.web"
+MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName": "chrome"}]
+EOF
+
   run ddev add-on get "${DIR}"
   assert_success
 
   run ddev restart && ddev start --profiles=pi
   assert_success
+
+  # Verify web container PID 1 baseline environment variables with spaces are preserved without corruption
+  run ddev exec --service pi php -r 'echo getenv("MINK_DRIVER_ARGS_WEBDRIVER");'
+  assert_success
+  assert_output '["chrome", {"browserName": "chrome"}]'
 
   # Verify empty string override takes effect and overrides container defaults
   run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="" php -r '\''var_dump(getenv("BROWSERTEST_OUTPUT_DIRECTORY"));'\'''
@@ -443,7 +452,7 @@ EOF
   assert_success
   assert_output '/custom/path'
 
-  # Verify standard test and runtime prefixes
+  # Verify standard test and runtime prefixes (including caller override of PID 1 baseline)
   run ddev exec --service pi bash << 'EOF'
     XDEBUG_MODE=coverage \
     SIMPLETEST_BASE_URL="http://example.com" \
