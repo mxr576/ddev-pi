@@ -19,8 +19,8 @@ try {
   try {
     data = JSON.parse(fs.readFileSync(path, 'utf8'));
   } catch (e) {}
-  if (data['app.suspend'] !== '') {
-    data['app.suspend'] = '';
+  if (!Array.isArray(data['app.suspend']) || data['app.suspend'].length !== 0) {
+    data['app.suspend'] = [];
     fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
   }
 } catch (e) {}

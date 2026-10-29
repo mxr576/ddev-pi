@@ -607,4 +607,68 @@ EOF
   assert_success
 }
 
+@test "terminal suspension: Ctrl+Z is disabled in keybindings and container wrapper" {
+  set -eu -o pipefail
+  echo "# Testing Ctrl+Z terminal suspension disabling with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  # 1. Verify keybindings.json initializes app.suspend as an empty array
+  run ddev exec --service pi node -e "
+    const fs = require('fs');
+    const path = process.env.HOME + '/.pi/agent/keybindings.json';
+    const kb = JSON.parse(fs.readFileSync(path, 'utf8'));
+    if (!Array.isArray(kb['app.suspend']) || kb['app.suspend'].length !== 0) {
+      console.error('Expected app.suspend to be [], got:', kb['app.suspend']);
+      process.exit(1);
+    }
+  "
+  assert_success
+
+  # 2. Verify KeybindingsManager resolves app.suspend to [] and does not match Ctrl+Z (\x1a)
+  run ddev exec --service pi node --input-type=module -e "
+    import { KeybindingsManager } from '/home/pi/.npm-global/pi/node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js';
+    const km = KeybindingsManager.create(process.env.HOME + '/.pi/agent');
+    const effective = km.getEffectiveConfig();
+    if (!Array.isArray(effective['app.suspend']) || effective['app.suspend'].length !== 0) {
+      console.error('Expected effective app.suspend to be [], got:', effective['app.suspend']);
+      process.exit(1);
+    }
+    if (km.matches('\x1a', 'app.suspend')) {
+      console.error('Ctrl+Z unexpectedly matched app.suspend');
+      process.exit(1);
+    }
+  "
+  assert_success
+
+  # 3. Verify container wrapper (~/.pi/agent/bin/pi) disables TTY suspension via stty
+  run ddev exec --service pi grep -q "stty susp undef" /home/pi/.pi/agent/bin/pi
+  assert_success
+
+  # 4. Verify existing legacy/broken app.suspend value (empty string) is migrated to [] on restart
+  run ddev exec --service pi bash -c "
+    echo '{\"app.suspend\": \"\"}' > \${HOME}/.pi/agent/keybindings.json
+  "
+  assert_success
+
+  run ddev restart && ddev start --profiles=pi
+  assert_success
+
+  run ddev exec --service pi node -e "
+    const fs = require('fs');
+    const path = process.env.HOME + '/.pi/agent/keybindings.json';
+    const kb = JSON.parse(fs.readFileSync(path, 'utf8'));
+    if (!Array.isArray(kb['app.suspend']) || kb['app.suspend'].length !== 0) {
+      console.error('Expected app.suspend to be migrated to [], got:', kb['app.suspend']);
+      process.exit(1);
+    }
+  "
+  assert_success
+}
+
+
 
