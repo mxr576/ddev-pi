@@ -22,7 +22,8 @@ export default function (pi: ExtensionAPI) {
       `The following tools automatically execute in the DDEV web container: ${toolList}.\n` +
       "All required environment variables (SIMPLETEST_DB, SIMPLETEST_BASE_URL, MINK_DRIVER_ARGS_WEBDRIVER, etc.)\n" +
       "and working directory are preserved automatically.\n" +
-      "Run tools directly without prefixing with `ssh web` or `ddev exec`.";
+      "Run tools directly without prefixing with `ssh web` or `ddev exec`.\n" +
+      "Use `/usr/bin/npm` to run `npm` locally inside the `pi` container.";
 
     return { systemPrompt: event.systemPrompt + instruction };
   });
