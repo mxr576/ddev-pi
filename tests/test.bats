@@ -84,8 +84,6 @@ ensure_shared_pi() {
   assert_success
   run ddev add-on get "${DIR}"
   assert_success
-  run ddev start -y
-  assert_success
   run ddev start -y --profiles=pi
   assert_success
   touch "${TESTDIR}/.shared_pi_ready"
