@@ -12,11 +12,36 @@
 # For debugging:
 #   bats ./tests/test.bats --show-output-of-passing-tests --verbose-run --print-output-on-failure
 
-setup() {
+setup_file() {
   set -eu -o pipefail
 
   # Override this variable for your add-on:
   export GITHUB_REPO=mxr576/ddev-pi
+
+  export DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." >/dev/null 2>&1 && pwd)"
+  export SHARED_PROJNAME="test-$(basename "${GITHUB_REPO}")"
+  mkdir -p "${HOME}/tmp"
+  export SHARED_TESTDIR="$(mktemp -d "${HOME}/tmp/${SHARED_PROJNAME}.XXXXXX")"
+  export DDEV_NONINTERACTIVE=true
+  export DDEV_NO_INSTRUMENTATION=true
+}
+
+teardown_file() {
+  set -eu -o pipefail
+  if [ -f "${SHARED_TESTDIR}/.shared_pi_started" ]; then
+    ddev delete -Oy "${SHARED_PROJNAME}" >/dev/null 2>&1 || true
+  fi
+  # Persist TESTDIR if running inside GitHub Actions. Useful for uploading test result artifacts
+  # See example at https://github.com/ddev/github-action-add-on-test#preserving-artifacts
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    [ -e "${GITHUB_ENV:-}" ] && echo "TESTDIR=${SHARED_TESTDIR}" >> "${GITHUB_ENV}"
+  else
+    [ -n "${SHARED_TESTDIR:-}" ] && rm -rf "${SHARED_TESTDIR}"
+  fi
+}
+
+setup() {
+  set -eu -o pipefail
 
   TEST_BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
   export BATS_LIB_PATH="${BATS_LIB_PATH}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats"
@@ -24,340 +49,91 @@ setup() {
   bats_load_library bats-file
   bats_load_library bats-support
 
-  export DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." >/dev/null 2>&1 && pwd)"
-  export PROJNAME="test-$(basename "${GITHUB_REPO}")"
-  mkdir -p "${HOME}/tmp"
+  export PROJNAME="${SHARED_PROJNAME}"
+  export TESTDIR="${SHARED_TESTDIR}"
+  cd "${TESTDIR}"
+}
+
+teardown() {
+  set -eu -o pipefail
+  if [ -f "${BATS_TEST_TMPDIR}/iso_projname" ]; then
+    local iso_proj
+    iso_proj="$(cat "${BATS_TEST_TMPDIR}/iso_projname")"
+    ddev delete -Oy "${iso_proj}" >/dev/null 2>&1 || true
+  fi
+  if [ -f "${BATS_TEST_TMPDIR}/iso_testdir" ] && [ -z "${GITHUB_ENV:-}" ]; then
+    local iso_dir
+    iso_dir="$(cat "${BATS_TEST_TMPDIR}/iso_testdir")"
+    [ -n "${iso_dir}" ] && rm -rf "${iso_dir}"
+  fi
+}
+
+# Lazily initializes a single shared DDEV + pi project for runtime and hook tests.
+ensure_shared_pi() {
+  export PROJNAME="${SHARED_PROJNAME}"
+  export TESTDIR="${SHARED_TESTDIR}"
+  cd "${TESTDIR}"
+
+  if [ -f "${TESTDIR}/.shared_pi_ready" ]; then
+    return 0
+  fi
+
+  touch "${TESTDIR}/.shared_pi_started"
+  ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1 || true
+  run ddev config --project-name="${PROJNAME}" --project-tld=ddev.site
+  assert_success
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev start -y
+  assert_success
+  run ddev start -y --profiles=pi
+  assert_success
+  touch "${TESTDIR}/.shared_pi_ready"
+}
+
+# Restarts only the pi container (~2-3s) instead of the entire DDEV stack,
+# and waits for entrypoint.sh to finish.
+restart_pi() {
+  docker restart "ddev-${PROJNAME}-pi" >/dev/null
+  for _ in $(seq 1 30); do
+    if ddev exec --service pi test -f /tmp/.entrypoint_finished >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for /tmp/.entrypoint_finished after restarting pi" >&2
+  return 1
+}
+
+# Creates an isolated DDEV project for fresh-install or image-rebuild tests.
+setup_isolated_project() {
+  export PROJNAME="test-$(basename "${GITHUB_REPO}")-iso-${BATS_TEST_NUMBER}"
   export TESTDIR="$(mktemp -d "${HOME}/tmp/${PROJNAME}.XXXXXX")"
-  export DDEV_NONINTERACTIVE=true
-  export DDEV_NO_INSTRUMENTATION=true
+  echo "${PROJNAME}" > "${BATS_TEST_TMPDIR}/iso_projname"
+  echo "${TESTDIR}" > "${BATS_TEST_TMPDIR}/iso_testdir"
+
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1 || true
   cd "${TESTDIR}"
   run ddev config --project-name="${PROJNAME}" --project-tld=ddev.site
   assert_success
-  run ddev start -y
-  assert_success
 }
 
 health_checks() {
-  # Do something useful here that verifies the add-on
-
-  # You can check for specific information in headers:
-  # run curl -sfI https://${PROJNAME}.ddev.site
-  # assert_output --partial "HTTP/2 200"
-  # assert_output --partial "test_header"
-
-  # Or check if some command gives expected output:
   DDEV_DEBUG=true run ddev launch
   assert_success
   assert_output --partial "FULLURL https://${PROJNAME}.ddev.site"
 }
 
-teardown() {
-  set -eu -o pipefail
-  ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1
-  # Persist TESTDIR if running inside GitHub Actions. Useful for uploading test result artifacts
-  # See example at https://github.com/ddev/github-action-add-on-test#preserving-artifacts
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    [ -e "${GITHUB_ENV:-}" ] && echo "TESTDIR=${HOME}/tmp/${PROJNAME}" >> "${GITHUB_ENV}"
-  else
-    [ "${TESTDIR}" != "" ] && rm -rf "${TESTDIR}"
-  fi
-}
-
-install_and_start_pi() {
-  run ddev add-on get "${DIR}"
-  assert_success
-  run ddev restart -y
-  assert_success
-  run ddev start -y --profiles=pi
-  assert_success
-}
-
-@test "install from directory" {
-  set -eu -o pipefail
-  echo "# ddev add-on get ${DIR} with project ${PROJNAME} in $(pwd)" >&3
-  run ddev add-on get "${DIR}"
-  assert_success
-  run ddev restart -y
-  assert_success
-  health_checks
-}
-
-# bats test_tags=release
-@test "install from release" {
-  set -eu -o pipefail
-  echo "# ddev add-on get ${GITHUB_REPO} with project ${PROJNAME} in $(pwd)" >&3
-  run ddev add-on get "${GITHUB_REPO}"
-  assert_success
-  run ddev restart -y
-  assert_success
-  health_checks
-}
-
-@test "entrypoint.d: empty directory does not cause errors" {
-  set -eu -o pipefail
-  install_and_start_pi
-  run ddev exec --service pi echo "container is up"
-  assert_success
-  assert_output --partial "container is up"
-}
-
-@test "entrypoint readiness flag is created after startup" {
-  set -eu -o pipefail
-  install_and_start_pi
-  run ddev exec --service pi test -f /tmp/.entrypoint_finished
-  assert_success
-}
-
-@test "entrypoint.d: hooks run in lexicographic order" {
-  set -eu -o pipefail
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
-  mkdir -p "${HOOK_DIR}"
-
-  cat > "${HOOK_DIR}/10-first.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "10-first" >> /tmp/hook-order.log
-EOF
-  chmod +x "${HOOK_DIR}/10-first.sh"
-
-  cat > "${HOOK_DIR}/50-second.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "50-second" >> /tmp/hook-order.log
-EOF
-  chmod +x "${HOOK_DIR}/50-second.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  run ddev exec --service pi cat /tmp/hook-order.log
-  assert_success
-  assert_output --partial "10-first"
-  assert_output --partial "50-second"
-
-  # Verify 10-first appears before 50-second in the file.
-  run ddev exec --service pi bash -c 'grep -n "10-first" /tmp/hook-order.log | cut -d: -f1'
-  assert_success
-  FIRST_LINE="${output}"
-
-  run ddev exec --service pi bash -c 'grep -n "50-second" /tmp/hook-order.log | cut -d: -f1'
-  assert_success
-  SECOND_LINE="${output}"
-
-  [ "${FIRST_LINE}" -lt "${SECOND_LINE}" ]
-}
-
-@test "entrypoint.d: failing hook emits warning but container keeps running" {
-  set -eu -o pipefail
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
-  mkdir -p "${HOOK_DIR}"
-
-  cat > "${HOOK_DIR}/10-failing.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
-  chmod +x "${HOOK_DIR}/10-failing.sh"
-
-  cat > "${HOOK_DIR}/20-after-failure.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "still-running" >> /tmp/post-failure.log
-EOF
-  chmod +x "${HOOK_DIR}/20-after-failure.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # Container must still be reachable.
-  run ddev exec --service pi echo "alive"
-  assert_success
-  assert_output --partial "alive"
-
-  # The hook that follows the failing one must still have run.
-  run ddev exec --service pi cat /tmp/post-failure.log
-  assert_success
-  assert_output --partial "still-running"
-
-  # Verify the warning was emitted in the container logs.
-  run ddev logs -s pi
-  assert_success
-  assert_output --partial "WARNING: 10-failing.sh exited with a non-zero status"
-}
-
-@test "entrypoint.d: successful hook produces observable side effects" {
-  set -eu -o pipefail
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
-  mkdir -p "${HOOK_DIR}"
-
-  cat > "${HOOK_DIR}/50-side-effect.sh" <<'EOF'
-#!/usr/bin/env bash
-touch /tmp/hook-ran.marker
-EOF
-  chmod +x "${HOOK_DIR}/50-side-effect.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  run ddev exec --service pi test -f /tmp/hook-ran.marker
-  assert_success
-}
-
-@test "build.d: contributed script installs package into PI container" {
-  set -eu -o pipefail
-  echo "# Testing build.d/ seam with project ${PROJNAME} in $(pwd)" >&3
-
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  # Copy the fixture build script into .ddev/pi/build.d/ so it is picked
-  # up when the PI image is (re)built.
-  BUILD_D_DIR="${TESTDIR}/.ddev/pi/build.d"
-  mkdir -p "${BUILD_D_DIR}"
-  cp "${DIR}/tests/testdata/build.d/50-test-package.sh" "${BUILD_D_DIR}/50-test-package.sh"
-  chmod +x "${BUILD_D_DIR}/50-test-package.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # The fixture script installs 'tree', which must now be present inside the
-  # running PI container.
-  run ddev exec --service pi which tree
-  assert_success
-
-  run ddev exec --service pi tree --version
-  assert_success
-}
-
-@test "bashrc.d: contributed script defines alias available in interactive shell" {
-  set -eu -o pipefail
-  echo "# Testing bashrc.d/ seam with project ${PROJNAME} in $(pwd)" >&3
-
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  # Copy the fixture bashrc.d script into .ddev/pi/bashrc.d/ so it is
-  # mounted into the container at /home/pi/.bashrc.d and sourced by ~/.bashrc.
-  BASHRC_D_DIR="${TESTDIR}/.ddev/pi/bashrc.d"
-  mkdir -p "${BASHRC_D_DIR}"
-  cp "${DIR}/tests/testdata/bashrc.d/50-test-alias.sh" "${BASHRC_D_DIR}/50-test-alias.sh"
-  chmod +x "${BASHRC_D_DIR}/50-test-alias.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # Open an interactive login shell so ~/.bashrc is sourced, then check
-  # that the alias defined in the fixture is available.
-  run ddev exec --service pi bash -i -c 'type pi-test-alias'
-  assert_success
-  assert_output --partial "pi-test-alias"
-}
-
-@test "entrypoint.d: fixture sentinel script writes marker file on startup" {
-  set -eu -o pipefail
-  echo "# Testing entrypoint.d/ sentinel fixture with project ${PROJNAME} in $(pwd)" >&3
-
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  # Copy the fixture sentinel script into .ddev/pi/entrypoint.d/ so it is
-  # mounted and executed by entrypoint.sh on container startup.
-  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
-  mkdir -p "${ENTRYPOINT_D_DIR}"
-  cp "${DIR}/tests/testdata/entrypoint.d/50-sentinel.sh" "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
-  chmod +x "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # The sentinel file must exist, proving the hook ran during startup.
-  run ddev exec --service pi test -f /tmp/entrypoint-sentinel.marker
-  assert_success
-}
-
-@test "entrypoint.d: failing fixture script does not crash the container" {
-  set -eu -o pipefail
-  echo "# Testing entrypoint.d/ warning-not-crash behavior with project ${PROJNAME} in $(pwd)" >&3
-
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  # Copy the fixture failing script into .ddev/pi/entrypoint.d/.
-  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
-  mkdir -p "${ENTRYPOINT_D_DIR}"
-  cp "${DIR}/tests/testdata/entrypoint.d/60-failing.sh" "${ENTRYPOINT_D_DIR}/60-failing.sh"
-  chmod +x "${ENTRYPOINT_D_DIR}/60-failing.sh"
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
-
-  # The container must still be reachable and healthy despite the failing hook.
-  run ddev exec --service pi echo "still-healthy"
-  assert_success
-  assert_output --partial "still-healthy"
-
-  # Verify the warning was emitted in the container logs.
-  run ddev logs -s pi
-  assert_success
-  assert_output --partial "WARNING: 60-failing.sh exited with a non-zero status"
-}
-
-@test "clipboard: container interceptor and host helper work in tandem" {
-  set -eu -o pipefail
-  echo "# Testing clipboard integration with project ${PROJNAME} in $(pwd)" >&3
-
-  install_and_start_pi
-
-  # Verify PI_CLIPBOARD_OSC52 defaults to 0 in the container
-  run ddev exec --service pi bash -c 'echo "${PI_CLIPBOARD_OSC52:-}"'
-  assert_success
-  assert_output "0"
-
-  # 1. Test Container-side Interceptor
-  # xclip, xsel, wl-copy should write to the shared volume file bridge.
-  run ddev exec --service pi bash -c "echo 'interceptor-test-content' | xclip"
-  assert_success
-
-  # Verify the pending file exists and contains the correct data.
-  assert_file_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
-  run cat "${TESTDIR}/.ddev/pi/.clipboard_pending"
-  assert_output --partial "interceptor-test-content"
-
-  # 2. Test Host-side Python Helper
-  # Start the helper on the host pointing to the pending file.
-  python3 "${TESTDIR}/.ddev/pi/clipboard-helper.py" "${TESTDIR}/.ddev/pi/.clipboard_pending" > "${TESTDIR}/.ddev/clipboard-test.log" 2>&1 &
-  HELPER_PID=$!
-
-  # Wait a moment for the helper to process and delete the file.
-  for i in $(seq 1 20); do
-    [ ! -f "${TESTDIR}/.ddev/pi/.clipboard_pending" ] && break
-    sleep 0.1
-  done
-
-  # Terminate helper
-  kill "${HELPER_PID}" || true
-  wait "${HELPER_PID}" 2>/dev/null || true
-
-  # The pending file should have been deleted by the helper.
-  assert_file_not_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
-
-  # Verify in logs that the helper started and attempted copying.
-  run cat "${TESTDIR}/.ddev/clipboard-test.log"
-  assert_output --partial "Starting clipboard helper"
-}
+# ==============================================================================
+# Host-only tests (no DDEV containers required)
+# ==============================================================================
 
 @test "clipboard: host command falls back to OSC 52 when python3 is unavailable" {
   set -eu -o pipefail
-  echo "# Testing clipboard host command fallback with project ${PROJNAME} in $(pwd)" >&3
+  echo "# Testing clipboard host command fallback" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
+  HOST_TEST_DIR="$(mktemp -d "${HOME}/tmp/host-test.XXXXXX")"
+  mkdir -p "${HOST_TEST_DIR}/.ddev/pi"
 
   FAKE_BIN="$(mktemp -d "${HOME}/tmp/fakebin.XXXXXX")"
   ln -s "$(command -v bash)" "${FAKE_BIN}/bash"
@@ -371,107 +147,25 @@ exit 0
 EOF
   chmod +x "${FAKE_BIN}/ddev"
 
-  run env -i HOME="${HOME}" DDEV_APPROOT="${TESTDIR}" PATH="${FAKE_BIN}" bash "${TESTDIR}/.ddev/commands/host/pi" --version
-  rm -rf "${FAKE_BIN}"
+  run env -i HOME="${HOME}" DDEV_APPROOT="${HOST_TEST_DIR}" PATH="${FAKE_BIN}" bash "${DIR}/commands/host/pi" --version
+  rm -rf "${FAKE_BIN}" "${HOST_TEST_DIR}"
 
   assert_output --partial "Falling back to terminal OSC 52 clipboard sync"
   assert_output --partial "PI_CLIPBOARD_OSC52=1"
 }
 
-@test "web toolchain proxies: transparently forward commands to web container" {
-  set -eu -o pipefail
-  echo "# Testing web toolchain proxy shims with project ${PROJNAME} in $(pwd)" >&3
-
-  install_and_start_pi
-
-  # Verify shims are installed and executable on $PATH
-  run ddev exec --service pi which php composer drush phpunit behat yarn npm
-  assert_success
-
-  # Verify vendor/bin tool rewriting and execution via shim
-  mkdir -p "${TESTDIR}/vendor/bin"
-  cat << 'EOF' > "${TESTDIR}/vendor/bin/behat"
-#!/usr/bin/env bash
-echo "behat-mock-executed: $@"
-EOF
-  chmod +x "${TESTDIR}/vendor/bin/behat"
-
-  run ddev exec --service pi behat --version
-  assert_success
-  assert_output --partial "behat-mock-executed: --version"
-
-  rm -rf "${TESTDIR}/vendor/bin"
-
-  # Verify direct invocation works and reaches web container
-  run ddev exec --service pi php -v
-  assert_success
-  assert_output --partial "PHP"
-
-  run ddev exec --service pi composer --version
-  assert_success
-  assert_output --partial "Composer"
-
-  run ddev exec --service pi yarn --version
-  assert_success
-
-  run ddev exec --service pi npm --version
-  assert_success
-}
-
-@test "web toolchain proxies: forward caller environment variables across SSH" {
-  set -eu -o pipefail
-  echo "# Testing caller environment variable forwarding in tool proxies with project ${PROJNAME} in $(pwd)" >&3
-
-  cat << 'EOF' > "${TESTDIR}/.ddev/.env.web"
-MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName": "chrome"}]
-EOF
-
-  install_and_start_pi
-
-  # Verify web container PID 1 baseline environment variables with spaces are preserved without corruption
-  run ddev exec --service pi php -r 'echo getenv("MINK_DRIVER_ARGS_WEBDRIVER");'
-  assert_success
-  assert_output '["chrome", {"browserName": "chrome"}]'
-
-  # Verify empty string override takes effect and overrides container defaults
-  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="" php -r '\''var_dump(getenv("BROWSERTEST_OUTPUT_DIRECTORY"));'\'''
-  assert_success
-  assert_output 'string(0) ""'
-
-  # Verify custom value override takes effect
-  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="/custom/path" php -r '\''echo getenv("BROWSERTEST_OUTPUT_DIRECTORY");'\'''
-  assert_success
-  assert_output '/custom/path'
-
-  # Verify standard test and runtime prefixes (including caller override of PID 1 baseline)
-  run ddev exec --service pi bash << 'EOF'
-    XDEBUG_MODE=coverage \
-    SIMPLETEST_BASE_URL="http://example.com" \
-    MINK_DRIVER_ARGS_WEBDRIVER='["chrome"]' \
-    BEHAT_PARAMS='{"extensions":{}}' \
-    PHP_CUSTOM_VAR="custom_val" \
-    php -r 'echo getenv("XDEBUG_MODE") . "|" . getenv("SIMPLETEST_BASE_URL") . "|" . getenv("MINK_DRIVER_ARGS_WEBDRIVER") . "|" . getenv("BEHAT_PARAMS") . "|" . getenv("PHP_CUSTOM_VAR");'
-EOF
-  assert_success
-  assert_output 'coverage|http://example.com|["chrome"]|{"extensions":{}}|custom_val'
-
-  # Verify arbitrary custom caller variables are forwarded automatically while internal variables remain blocked
-  run ddev exec --service pi bash << 'EOF'
-    CUSTOM_VAR="arbitrary_passthrough" \
-    PROJECT_TEST_KEY="exported_val" \
-    PI_INTERNAL_SECRET="must_not_leak" \
-    NPM_CONFIG_PREFIX="/home/pi/.npm-global" \
-    php -r 'echo getenv("CUSTOM_VAR") . "|" . getenv("PROJECT_TEST_KEY") . "|" . (getenv("PI_INTERNAL_SECRET") ?: "blocked") . "|" . (getenv("NPM_CONFIG_PREFIX") ?: "blocked");'
-EOF
-  assert_success
-  assert_output 'arbitrary_passthrough|exported_val|blocked|blocked'
-}
+# ==============================================================================
+# Shared DDEV + pi runtime tests (no container restart needed)
+# ==============================================================================
 
 @test "web toolchain proxies: multiplexed SSH connection is established and handles concurrent calls" {
   set -eu -o pipefail
-  echo "# Testing tool proxy SSH multiplexing and concurrency with project ${PROJNAME} in $(pwd)" >&3
+  echo "# Testing tool proxy SSH multiplexing and concurrency" >&3
 
-  install_and_start_pi
+  ensure_shared_pi
+
+  # Ensure any pre-existing SSH ControlMaster is closed before verifying initial state.
+  ddev exec --service pi ssh -O exit web >/dev/null 2>&1 || true
 
   # 1. Before running any tool, verify 0 persistent SSH connections exist to port 22 (:0016).
   run ddev exec --service pi bash -c "grep -c ':0016 01 ' /proc/net/tcp || true"
@@ -514,11 +208,112 @@ EOF
   assert_output "1"
 }
 
+@test "entrypoint.d: empty directory does not cause errors" {
+  set -eu -o pipefail
+  ensure_shared_pi
+  run ddev exec --service pi echo "container is up"
+  assert_success
+  assert_output --partial "container is up"
+}
+
+@test "entrypoint readiness flag is created after startup" {
+  set -eu -o pipefail
+  ensure_shared_pi
+  run ddev exec --service pi test -f /tmp/.entrypoint_finished
+  assert_success
+}
+
+@test "clipboard: container interceptor and host helper work in tandem" {
+  set -eu -o pipefail
+  echo "# Testing clipboard integration with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Verify PI_CLIPBOARD_OSC52 defaults to 0 in the container
+  run ddev exec --service pi bash -c 'echo "${PI_CLIPBOARD_OSC52:-}"'
+  assert_success
+  assert_output "0"
+
+  # 1. Test Container-side Interceptor
+  # xclip, xsel, wl-copy should write to the shared volume file bridge.
+  run ddev exec --service pi bash -c "echo 'interceptor-test-content' | xclip"
+  assert_success
+
+  # Verify the pending file exists and contains the correct data.
+  assert_file_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
+  run cat "${TESTDIR}/.ddev/pi/.clipboard_pending"
+  assert_output --partial "interceptor-test-content"
+
+  # 2. Test Host-side Python Helper
+  # Start the helper on the host pointing to the pending file.
+  python3 "${TESTDIR}/.ddev/pi/clipboard-helper.py" "${TESTDIR}/.ddev/pi/.clipboard_pending" > "${TESTDIR}/.ddev/clipboard-test.log" 2>&1 &
+  HELPER_PID=$!
+
+  # Wait a moment for the helper to process and delete the file.
+  for i in $(seq 1 20); do
+    [ ! -f "${TESTDIR}/.ddev/pi/.clipboard_pending" ] && break
+    sleep 0.1
+  done
+
+  # Terminate helper
+  kill "${HELPER_PID}" || true
+  wait "${HELPER_PID}" 2>/dev/null || true
+
+  # The pending file should have been deleted by the helper.
+  assert_file_not_exists "${TESTDIR}/.ddev/pi/.clipboard_pending"
+
+  # Verify in logs that the helper started and attempted copying.
+  run cat "${TESTDIR}/.ddev/clipboard-test.log"
+  assert_output --partial "Starting clipboard helper"
+
+  rm -f "${TESTDIR}/.ddev/clipboard-test.log"
+}
+
+@test "web toolchain proxies: transparently forward commands to web container" {
+  set -eu -o pipefail
+  echo "# Testing web toolchain proxy shims with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Verify shims are installed and executable on $PATH
+  run ddev exec --service pi which php composer drush phpunit behat yarn npm
+  assert_success
+
+  # Verify vendor/bin tool rewriting and execution via shim
+  mkdir -p "${TESTDIR}/vendor/bin"
+  cat << 'EOF' > "${TESTDIR}/vendor/bin/behat"
+#!/usr/bin/env bash
+echo "behat-mock-executed: $@"
+EOF
+  chmod +x "${TESTDIR}/vendor/bin/behat"
+
+  run ddev exec --service pi behat --version
+  assert_success
+  assert_output --partial "behat-mock-executed: --version"
+
+  rm -rf "${TESTDIR}/vendor/bin"
+
+  # Verify direct invocation works and reaches web container
+  run ddev exec --service pi php -v
+  assert_success
+  assert_output --partial "PHP"
+
+  run ddev exec --service pi composer --version
+  assert_success
+  assert_output --partial "Composer"
+
+  run ddev exec --service pi yarn --version
+  assert_success
+
+  run ddev exec --service pi npm --version
+  assert_success
+}
+
 @test "make: executes targets calling proxied web tools" {
   set -eu -o pipefail
-  echo "# Testing make calling proxied web tools with project ${PROJNAME} in $(pwd)" >&3
+  echo "# Testing make calling proxied web tools with project ${SHARED_PROJNAME}" >&3
 
-  install_and_start_pi
+  ensure_shared_pi
 
   # Verify make is installed in the PI container
   run ddev exec --service pi which make
@@ -541,9 +336,9 @@ EOF
 
 @test "extension management: pi install and list extensions work end-to-end" {
   set -eu -o pipefail
-  echo "# Testing extension installation e2e with project ${PROJNAME} in $(pwd)" >&3
+  echo "# Testing extension installation e2e with project ${SHARED_PROJNAME}" >&3
 
-  install_and_start_pi
+  ensure_shared_pi
 
   # Create a local extension fixture inside the project directory
   mkdir -p "${TESTDIR}/pi-test-extension"
@@ -584,13 +379,63 @@ EOF
   # Clean up project extension
   run ddev exec --service pi pi remove -l /var/www/html/pi-test-extension
   assert_success
+
+  rm -rf "${TESTDIR}/pi-test-extension"
 }
+
+@test "web-service-commands extension: unit and E2E tests" {
+  set -eu -o pipefail
+  echo "# Testing web-service-commands extension with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Stage unit and E2E tests in the project root (mounted at /var/www/html)
+  mkdir -p "${TESTDIR}/_pi_test/tests"
+  cp "${DIR}/tests/web-service-commands.test.ts" "${TESTDIR}/_pi_test/tests/"
+  cp "${DIR}/tests/web-service-commands.e2e.test.ts" "${TESTDIR}/_pi_test/tests/"
+
+  # Run unit and E2E tests against the installed extension inside the pi container
+  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.test.ts'
+  assert_success
+
+  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.e2e.test.ts'
+  assert_success
+
+  # Clean up staged test files
+  rm -rf "${TESTDIR}/_pi_test"
+}
+
+@test "bashrc.d: contributed script defines alias available in interactive shell" {
+  set -eu -o pipefail
+  echo "# Testing bashrc.d/ seam with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Copy the fixture bashrc.d script into .ddev/pi/bashrc.d/ so it is
+  # mounted into the container at /home/pi/.bashrc.d and sourced by ~/.bashrc.
+  BASHRC_D_DIR="${TESTDIR}/.ddev/pi/bashrc.d"
+  mkdir -p "${BASHRC_D_DIR}"
+  cp "${DIR}/tests/testdata/bashrc.d/50-test-alias.sh" "${BASHRC_D_DIR}/50-test-alias.sh"
+  chmod +x "${BASHRC_D_DIR}/50-test-alias.sh"
+
+  # Open an interactive shell so ~/.bashrc is sourced, then check
+  # that the alias defined in the fixture is available.
+  run ddev exec --service pi bash -i -c 'type pi-test-alias'
+  rm -f "${BASHRC_D_DIR}/50-test-alias.sh"
+
+  assert_success
+  assert_output --partial "pi-test-alias"
+}
+
+# ==============================================================================
+# Shared DDEV + pi hook/config restart tests (fast pi-only restarts)
+# ==============================================================================
 
 @test "terminal suspension: Ctrl+Z is disabled in keybindings and container wrapper" {
   set -eu -o pipefail
-  echo "# Testing Ctrl+Z terminal suspension disabling with project ${PROJNAME} in $(pwd)" >&3
+  echo "# Testing Ctrl+Z terminal suspension disabling with project ${SHARED_PROJNAME}" >&3
 
-  install_and_start_pi
+  ensure_shared_pi
 
   # 1. Verify keybindings.json initializes app.suspend as an empty array
   run ddev exec --service pi node -e "
@@ -630,8 +475,7 @@ EOF
   "
   assert_success
 
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  restart_pi
 
   run ddev exec --service pi node -e "
     const fs = require('fs');
@@ -645,27 +489,261 @@ EOF
   assert_success
 }
 
-@test "web-service-commands extension: unit and E2E tests" {
+@test "entrypoint.d: hooks run in lexicographic order" {
   set -eu -o pipefail
-  echo "# Testing web-service-commands extension with project ${PROJNAME} in $(pwd)" >&3
+  ensure_shared_pi
 
-  install_and_start_pi
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
 
-  # Stage unit and E2E tests in the project root (mounted at /var/www/html)
-  mkdir -p "${TESTDIR}/_pi_test/tests"
-  cp "${DIR}/tests/web-service-commands.test.ts" "${TESTDIR}/_pi_test/tests/"
-  cp "${DIR}/tests/web-service-commands.e2e.test.ts" "${TESTDIR}/_pi_test/tests/"
+  cat > "${HOOK_DIR}/10-first.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "10-first" >> /tmp/hook-order.log
+EOF
+  chmod +x "${HOOK_DIR}/10-first.sh"
 
-  # Run unit and E2E tests against the installed extension inside the pi container
-  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.test.ts'
+  cat > "${HOOK_DIR}/50-second.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "50-second" >> /tmp/hook-order.log
+EOF
+  chmod +x "${HOOK_DIR}/50-second.sh"
+
+  restart_pi
+
+  run ddev exec --service pi cat /tmp/hook-order.log
   assert_success
+  assert_output --partial "10-first"
+  assert_output --partial "50-second"
 
-  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.e2e.test.ts'
+  # Verify 10-first appears before 50-second in the file.
+  run ddev exec --service pi bash -c 'grep -n "10-first" /tmp/hook-order.log | cut -d: -f1'
   assert_success
+  FIRST_LINE="${output}"
 
-  # Clean up staged test files
-  rm -rf "${TESTDIR}/_pi_test"
+  run ddev exec --service pi bash -c 'grep -n "50-second" /tmp/hook-order.log | cut -d: -f1'
+  assert_success
+  SECOND_LINE="${output}"
+
+  rm -f "${HOOK_DIR}/10-first.sh" "${HOOK_DIR}/50-second.sh"
+  [ "${FIRST_LINE}" -lt "${SECOND_LINE}" ]
 }
 
+@test "entrypoint.d: failing hook emits warning but container keeps running" {
+  set -eu -o pipefail
+  ensure_shared_pi
 
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
 
+  cat > "${HOOK_DIR}/10-failing.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${HOOK_DIR}/10-failing.sh"
+
+  cat > "${HOOK_DIR}/20-after-failure.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "still-running" >> /tmp/post-failure.log
+EOF
+  chmod +x "${HOOK_DIR}/20-after-failure.sh"
+
+  restart_pi
+
+  # Container must still be reachable.
+  run ddev exec --service pi echo "alive"
+  assert_success
+  assert_output --partial "alive"
+
+  # The hook that follows the failing one must still have run.
+  run ddev exec --service pi cat /tmp/post-failure.log
+  assert_success
+  assert_output --partial "still-running"
+
+  # Verify the warning was emitted in the container logs.
+  run ddev logs -s pi
+  rm -f "${HOOK_DIR}/10-failing.sh" "${HOOK_DIR}/20-after-failure.sh"
+  assert_success
+  assert_output --partial "WARNING: 10-failing.sh exited with a non-zero status"
+}
+
+@test "entrypoint.d: successful hook produces observable side effects" {
+  set -eu -o pipefail
+  ensure_shared_pi
+
+  HOOK_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${HOOK_DIR}"
+
+  cat > "${HOOK_DIR}/50-side-effect.sh" <<'EOF'
+#!/usr/bin/env bash
+touch /tmp/hook-ran.marker
+EOF
+  chmod +x "${HOOK_DIR}/50-side-effect.sh"
+
+  restart_pi
+
+  run ddev exec --service pi test -f /tmp/hook-ran.marker
+  rm -f "${HOOK_DIR}/50-side-effect.sh"
+  assert_success
+}
+
+@test "entrypoint.d: fixture sentinel script writes marker file on startup" {
+  set -eu -o pipefail
+  echo "# Testing entrypoint.d/ sentinel fixture with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Copy the fixture sentinel script into .ddev/pi/entrypoint.d/ so it is
+  # mounted and executed by entrypoint.sh on container startup.
+  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${ENTRYPOINT_D_DIR}"
+  cp "${DIR}/tests/testdata/entrypoint.d/50-sentinel.sh" "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
+  chmod +x "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
+
+  restart_pi
+
+  # The sentinel file must exist, proving the hook ran during startup.
+  run ddev exec --service pi test -f /tmp/entrypoint-sentinel.marker
+  rm -f "${ENTRYPOINT_D_DIR}/50-sentinel.sh"
+  assert_success
+}
+
+@test "entrypoint.d: failing fixture script does not crash the container" {
+  set -eu -o pipefail
+  echo "# Testing entrypoint.d/ warning-not-crash behavior with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  # Copy the fixture failing script into .ddev/pi/entrypoint.d/.
+  ENTRYPOINT_D_DIR="${TESTDIR}/.ddev/pi/entrypoint.d"
+  mkdir -p "${ENTRYPOINT_D_DIR}"
+  cp "${DIR}/tests/testdata/entrypoint.d/60-failing.sh" "${ENTRYPOINT_D_DIR}/60-failing.sh"
+  chmod +x "${ENTRYPOINT_D_DIR}/60-failing.sh"
+
+  restart_pi
+
+  # The container must still be reachable and healthy despite the failing hook.
+  run ddev exec --service pi echo "still-healthy"
+  assert_success
+  assert_output --partial "still-healthy"
+
+  # Verify the warning was emitted in the container logs.
+  run ddev logs -s pi
+  rm -f "${ENTRYPOINT_D_DIR}/60-failing.sh"
+  assert_success
+  assert_output --partial "WARNING: 60-failing.sh exited with a non-zero status"
+}
+
+@test "web toolchain proxies: forward caller environment variables across SSH" {
+  set -eu -o pipefail
+  echo "# Testing caller environment variable forwarding in tool proxies with project ${SHARED_PROJNAME}" >&3
+
+  ensure_shared_pi
+
+  cat << 'EOF' > "${TESTDIR}/.ddev/.env.web"
+MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName": "chrome"}]
+EOF
+
+  run ddev restart -y
+  assert_success
+  run ddev start -y --profiles=pi
+  assert_success
+
+  # Verify web container PID 1 baseline environment variables with spaces are preserved without corruption
+  run ddev exec --service pi php -r 'echo getenv("MINK_DRIVER_ARGS_WEBDRIVER");'
+  assert_success
+  assert_output '["chrome", {"browserName": "chrome"}]'
+
+  # Verify empty string override takes effect and overrides container defaults
+  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="" php -r '\''var_dump(getenv("BROWSERTEST_OUTPUT_DIRECTORY"));'\'''
+  assert_success
+  assert_output 'string(0) ""'
+
+  # Verify custom value override takes effect
+  run ddev exec --service pi bash -c 'BROWSERTEST_OUTPUT_DIRECTORY="/custom/path" php -r '\''echo getenv("BROWSERTEST_OUTPUT_DIRECTORY");'\'''
+  assert_success
+  assert_output '/custom/path'
+
+  # Verify standard test and runtime prefixes (including caller override of PID 1 baseline)
+  run ddev exec --service pi bash << 'EOF'
+    XDEBUG_MODE=coverage \
+    SIMPLETEST_BASE_URL="http://example.com" \
+    MINK_DRIVER_ARGS_WEBDRIVER='["chrome"]' \
+    BEHAT_PARAMS='{"extensions":{}}' \
+    PHP_CUSTOM_VAR="custom_val" \
+    php -r 'echo getenv("XDEBUG_MODE") . "|" . getenv("SIMPLETEST_BASE_URL") . "|" . getenv("MINK_DRIVER_ARGS_WEBDRIVER") . "|" . getenv("BEHAT_PARAMS") . "|" . getenv("PHP_CUSTOM_VAR");'
+EOF
+  assert_success
+  assert_output 'coverage|http://example.com|["chrome"]|{"extensions":{}}|custom_val'
+
+  # Verify arbitrary custom caller variables are forwarded automatically while internal variables remain blocked
+  run ddev exec --service pi bash << 'EOF'
+    CUSTOM_VAR="arbitrary_passthrough" \
+    PROJECT_TEST_KEY="exported_val" \
+    PI_INTERNAL_SECRET="must_not_leak" \
+    NPM_CONFIG_PREFIX="/home/pi/.npm-global" \
+    php -r 'echo getenv("CUSTOM_VAR") . "|" . getenv("PROJECT_TEST_KEY") . "|" . (getenv("PI_INTERNAL_SECRET") ?: "blocked") . "|" . (getenv("NPM_CONFIG_PREFIX") ?: "blocked");'
+EOF
+  rm -f "${TESTDIR}/.ddev/.env.web"
+  assert_success
+  assert_output 'arbitrary_passthrough|exported_val|blocked|blocked'
+}
+
+# ==============================================================================
+# Isolated fresh-install & image-rebuild tests
+# ==============================================================================
+
+@test "install from directory" {
+  set -eu -o pipefail
+  setup_isolated_project
+  echo "# ddev add-on get ${DIR} with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev start -y
+  assert_success
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+  health_checks
+}
+
+# bats test_tags=release
+@test "install from release" {
+  set -eu -o pipefail
+  setup_isolated_project
+  echo "# ddev add-on get ${GITHUB_REPO} with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev start -y
+  assert_success
+  run ddev add-on get "${GITHUB_REPO}"
+  assert_success
+  run ddev restart -y
+  assert_success
+  health_checks
+}
+
+@test "build.d: contributed script installs package into PI container" {
+  set -eu -o pipefail
+  setup_isolated_project
+  echo "# Testing build.d/ seam with project ${PROJNAME} in $(pwd)" >&3
+
+  run ddev add-on get "${DIR}"
+  assert_success
+
+  # Copy the fixture build script into .ddev/pi/build.d/ so it is picked
+  # up when the PI image is (re)built.
+  BUILD_D_DIR="${TESTDIR}/.ddev/pi/build.d"
+  mkdir -p "${BUILD_D_DIR}"
+  cp "${DIR}/tests/testdata/build.d/50-test-package.sh" "${BUILD_D_DIR}/50-test-package.sh"
+  chmod +x "${BUILD_D_DIR}/50-test-package.sh"
+
+  run ddev start -y --profiles=pi
+  assert_success
+
+  # The fixture script installs 'tree', which must now be present inside the
+  # running PI container.
+  run ddev exec --service pi which tree
+  assert_success
+
+  run ddev exec --service pi tree --version
+  assert_success
+}
