@@ -17,15 +17,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     const toolList = WEB_TOOLS.map((t) => `\`${t}\``).join(", ");
 
-    const instruction =
-      "\n\n### Web Container Tool Execution Rules\n" +
+    event.systemPromptOptions.sections.ddev_web_container =
       `The following tools automatically execute in the DDEV web container: ${toolList}.\n` +
-      "All required environment variables (SIMPLETEST_DB, SIMPLETEST_BASE_URL, MINK_DRIVER_ARGS_WEBDRIVER, etc.)\n" +
-      "and working directory are preserved automatically.\n" +
+      "All required environment variables (SIMPLETEST_DB, SIMPLETEST_BASE_URL, MINK_DRIVER_ARGS_WEBDRIVER, etc.) and working directory are preserved automatically.\n" +
       "Run tools directly without prefixing with `ssh web` or `ddev exec`.\n" +
       "Use `/usr/bin/npm` to run `npm` locally inside the `pi` container.";
-
-    return { systemPrompt: event.systemPrompt + instruction };
   });
 
   pi.on("tool_call", async (event, ctx) => {

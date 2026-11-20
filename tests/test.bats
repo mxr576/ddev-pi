@@ -64,6 +64,15 @@ teardown() {
   fi
 }
 
+install_and_start_pi() {
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+  run ddev start -y --profiles=pi
+  assert_success
+}
+
 @test "install from directory" {
   set -eu -o pipefail
   echo "# ddev add-on get ${DIR} with project ${PROJNAME} in $(pwd)" >&3
@@ -87,10 +96,7 @@ teardown() {
 
 @test "entrypoint.d: empty directory does not cause errors" {
   set -eu -o pipefail
-  run ddev add-on get "${DIR}"
-  assert_success
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
   run ddev exec --service pi echo "container is up"
   assert_success
   assert_output --partial "container is up"
@@ -98,10 +104,7 @@ teardown() {
 
 @test "entrypoint readiness flag is created after startup" {
   set -eu -o pipefail
-  run ddev add-on get "${DIR}"
-  assert_success
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
   run ddev exec --service pi test -f /tmp/.entrypoint_finished
   assert_success
 }
@@ -309,11 +312,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing clipboard integration with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # Verify PI_CLIPBOARD_OSC52 defaults to 0 in the container
   run ddev exec --service pi bash -c 'echo "${PI_CLIPBOARD_OSC52:-}"'
@@ -383,11 +382,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing web toolchain proxy shims with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # Verify shims are installed and executable on $PATH
   run ddev exec --service pi which php composer drush phpunit behat yarn npm
@@ -431,11 +426,7 @@ EOF
 MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName": "chrome"}]
 EOF
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # Verify web container PID 1 baseline environment variables with spaces are preserved without corruption
   run ddev exec --service pi php -r 'echo getenv("MINK_DRIVER_ARGS_WEBDRIVER");'
@@ -480,11 +471,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing tool proxy SSH multiplexing and concurrency with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # 1. Before running any tool, verify 0 persistent SSH connections exist to port 22 (:0016).
   run ddev exec --service pi bash -c "grep -c ':0016 01 ' /proc/net/tcp || true"
@@ -531,11 +518,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing make calling proxied web tools with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # Verify make is installed in the PI container
   run ddev exec --service pi which make
@@ -560,11 +543,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing extension installation e2e with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # Create a local extension fixture inside the project directory
   mkdir -p "${TESTDIR}/pi-test-extension"
@@ -611,11 +590,7 @@ EOF
   set -eu -o pipefail
   echo "# Testing Ctrl+Z terminal suspension disabling with project ${PROJNAME} in $(pwd)" >&3
 
-  run ddev add-on get "${DIR}"
-  assert_success
-
-  run ddev restart && ddev start --profiles=pi
-  assert_success
+  install_and_start_pi
 
   # 1. Verify keybindings.json initializes app.suspend as an empty array
   run ddev exec --service pi node -e "
@@ -668,6 +643,28 @@ EOF
     }
   "
   assert_success
+}
+
+@test "web-service-commands extension: unit and E2E tests" {
+  set -eu -o pipefail
+  echo "# Testing web-service-commands extension with project ${PROJNAME} in $(pwd)" >&3
+
+  install_and_start_pi
+
+  # Stage unit and E2E tests in the project root (mounted at /var/www/html)
+  mkdir -p "${TESTDIR}/_pi_test/tests"
+  cp "${DIR}/tests/web-service-commands.test.ts" "${TESTDIR}/_pi_test/tests/"
+  cp "${DIR}/tests/web-service-commands.e2e.test.ts" "${TESTDIR}/_pi_test/tests/"
+
+  # Run unit and E2E tests against the installed extension inside the pi container
+  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.test.ts'
+  assert_success
+
+  run ddev exec --service pi bash -c 'PI_WEB_SERVICE_COMMANDS_EXTENSION_PATH=/home/pi/.pi/agent/extensions/web-service-commands.ts node /var/www/html/_pi_test/tests/web-service-commands.e2e.test.ts'
+  assert_success
+
+  # Clean up staged test files
+  rm -rf "${TESTDIR}/_pi_test"
 }
 
 
